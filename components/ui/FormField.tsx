@@ -23,19 +23,20 @@ export function FormField({ label, hint, style, ...props }: Props) {
 
 const styles = StyleSheet.create({
   wrapper: {
-    gap: theme.spacing.xs,
+    gap: 7,
   },
   label: {
-    color: theme.colors.text,
-    fontSize: 14,
-    fontWeight: '600',
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.4,
   },
   input: {
-    minHeight: 48,
+    minHeight: 50,
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.radius.small,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.background,
     paddingHorizontal: 14,
     color: theme.colors.text,
     fontSize: 16,

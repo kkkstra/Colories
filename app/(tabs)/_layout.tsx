@@ -11,15 +11,20 @@ export default function TabLayout() {
         tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: theme.colors.textMuted,
         tabBarStyle: {
-          height: 64,
-          paddingTop: 6,
-          paddingBottom: 8,
+          height: 72,
+          paddingTop: 8,
+          paddingBottom: 10,
           backgroundColor: theme.colors.surface,
           borderTopColor: theme.colors.border,
+          borderTopWidth: 1,
         },
         tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '600',
+          fontSize: 11,
+          fontWeight: '800',
+          letterSpacing: 0.3,
+        },
+        tabBarItemStyle: {
+          paddingTop: 2,
         },
         tabBarHideOnKeyboard: true,
       }}
@@ -38,7 +43,7 @@ export default function TabLayout() {
         options={{
           title: '记录',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="camera-outline" color={color} size={size} />
+            <Ionicons name="add-circle" color={color} size={size + 5} />
           ),
         }}
       />

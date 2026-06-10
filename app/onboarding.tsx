@@ -65,15 +65,17 @@ export default function OnboardingScreen() {
   return (
     <Screen>
       <View style={styles.hero}>
-        <Text style={styles.eyebrow}>欢迎使用燃卡</Text>
-        <Text style={styles.title}>先设定你的训练营养目标</Text>
-        <Text style={styles.subtitle}>
-          信息只保存在本机，用于计算每日热量与三大营养素建议。
-        </Text>
+        <Text style={styles.heroGlyph}>燃</Text>
+        <View style={styles.heroMark}>
+          <Text style={styles.heroMarkText}>RK</Text>
+        </View>
+        <Text style={styles.eyebrow}>WELCOME / DAILY FUEL</Text>
+        <Text style={styles.title}>先校准你的{'\n'}营养训练目标</Text>
+        <Text style={styles.subtitle}>身体信息只保存在本机，用来计算每日建议。</Text>
       </View>
 
-      <Card>
-        <Text style={styles.sectionTitle}>身体信息</Text>
+      <Card style={styles.sectionCard}>
+        <SectionTitle index="01" eyebrow="BODY DATA" title="身体信息" />
         <View style={styles.row}>
           <View style={styles.flex}>
             <FormField
@@ -109,8 +111,8 @@ export default function OnboardingScreen() {
         />
       </Card>
 
-      <Card>
-        <Text style={styles.sectionTitle}>活动水平</Text>
+      <Card style={styles.sectionCard}>
+        <SectionTitle index="02" eyebrow="TRAINING LOAD" title="活动水平" />
         <ChoiceChips
           value={activityLevel}
           onChange={setActivityLevel}
@@ -124,8 +126,8 @@ export default function OnboardingScreen() {
         />
       </Card>
 
-      <Card>
-        <Text style={styles.sectionTitle}>当前目标</Text>
+      <Card style={styles.sectionCard}>
+        <SectionTitle index="03" eyebrow="GOAL MODE" title="当前目标" />
         <ChoiceChips
           value={goal}
           onChange={setGoal}
@@ -135,6 +137,10 @@ export default function OnboardingScreen() {
             { label: '增肌', value: 'gain' },
           ]}
         />
+        <View style={styles.targetHeader}>
+          <Text style={styles.targetHeaderLabel}>CALCULATED TARGETS</Text>
+          <Text style={styles.targetHeaderHint}>可稍后在设置中调整</Text>
+        </View>
         <View style={styles.targetGrid}>
           <Target label="热量" value={`${targets.calories} kcal`} />
           <Target label="蛋白质" value={`${targets.protein} g`} />
@@ -146,8 +152,28 @@ export default function OnboardingScreen() {
         </Text>
       </Card>
 
-      <AppButton label="开始记录" onPress={handleSave} loading={saving} />
+      <AppButton label="保存目标，开始记录" icon="arrow-forward" onPress={handleSave} loading={saving} />
     </Screen>
+  );
+}
+
+function SectionTitle({
+  index,
+  eyebrow,
+  title,
+}: {
+  index: string;
+  eyebrow: string;
+  title: string;
+}) {
+  return (
+    <View style={styles.sectionHeading}>
+      <Text style={styles.sectionIndex}>{index}</Text>
+      <View>
+        <Text style={styles.sectionEyebrow}>{eyebrow}</Text>
+        <Text style={styles.sectionTitle}>{title}</Text>
+      </View>
+    </View>
   );
 }
 
@@ -162,34 +188,97 @@ function Target({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   hero: {
+    minHeight: 278,
     gap: 8,
-    paddingVertical: 16,
+    padding: 24,
+    borderRadius: theme.radius.large,
+    backgroundColor: theme.colors.ink,
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+  },
+  heroGlyph: {
+    position: 'absolute',
+    right: -20,
+    top: -42,
+    color: '#24304A',
+    fontSize: 190,
+    lineHeight: 220,
+    fontWeight: '900',
+  },
+  heroMark: {
+    position: 'absolute',
+    top: 20,
+    left: 22,
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    backgroundColor: theme.colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    transform: [{ rotate: '-5deg' }],
+  },
+  heroMarkText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.7,
   },
   eyebrow: {
-    color: theme.colors.accent,
-    fontWeight: '800',
-    letterSpacing: 1,
+    color: '#AEBBFF',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.4,
   },
   title: {
-    color: theme.colors.text,
-    fontSize: 30,
-    lineHeight: 38,
-    fontWeight: '800',
+    color: '#FFFFFF',
+    fontSize: 34,
+    lineHeight: 42,
+    fontWeight: '900',
+    letterSpacing: -1,
   },
   subtitle: {
-    color: theme.colors.textMuted,
-    fontSize: 15,
-    lineHeight: 23,
+    color: '#AEB9CD',
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  sectionCard: {
+    padding: 20,
+    gap: 16,
+  },
+  sectionHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  sectionIndex: {
+    width: 36,
+    height: 36,
+    borderRadius: 9,
+    backgroundColor: theme.colors.primary,
+    color: '#FFFFFF',
+    textAlign: 'center',
+    lineHeight: 36,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.7,
+  },
+  sectionEyebrow: {
+    color: theme.colors.textFaint,
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 1,
   },
   sectionTitle: {
     color: theme.colors.text,
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 19,
+    fontWeight: '900',
+    marginTop: 2,
   },
   fieldLabel: {
-    color: theme.colors.text,
-    fontSize: 14,
-    fontWeight: '600',
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.4,
     marginTop: 4,
   },
   row: {
@@ -202,14 +291,34 @@ const styles = StyleSheet.create({
   targetGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 6,
+    gap: 8,
+  },
+  targetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 5,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  targetHeaderLabel: {
+    color: theme.colors.primary,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  targetHeaderHint: {
+    color: theme.colors.textFaint,
+    fontSize: 9,
+    fontWeight: '700',
   },
   target: {
     width: '47%',
-    backgroundColor: theme.colors.surfaceMuted,
-    borderRadius: theme.radius.small,
-    padding: 12,
+    backgroundColor: theme.colors.background,
+    borderRadius: 9,
+    padding: 13,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   targetLabel: {
     color: theme.colors.textMuted,
@@ -218,7 +327,7 @@ const styles = StyleSheet.create({
   targetValue: {
     color: theme.colors.text,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '900',
     marginTop: 3,
   },
   disclaimer: {

@@ -1,11 +1,11 @@
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { SQLiteProvider } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
-import { useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import 'react-native-reanimated';
 
 import { AppProvider } from '@/context/AppContext';
+import { theme } from '@/constants/Theme';
 import { migrateDatabase } from '@/lib/database';
 
 export { ErrorBoundary } from 'expo-router';
@@ -15,10 +15,20 @@ export const unstable_settings = {
 };
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
+  const navigationTheme = {
+    ...DefaultTheme,
+    colors: {
+      ...DefaultTheme.colors,
+      background: theme.colors.background,
+      card: theme.colors.surface,
+      primary: theme.colors.primary,
+      text: theme.colors.text,
+      border: theme.colors.border,
+    },
+  };
   return (
     <SafeAreaProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <ThemeProvider value={navigationTheme}>
         <SQLiteProvider databaseName="calories.db" onInit={migrateDatabase}>
           <AppProvider>
             <Stack screenOptions={{ headerBackTitle: '返回' }}>

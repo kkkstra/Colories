@@ -15,14 +15,9 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: theme.colors.surface,
     borderRadius: theme.radius.medium,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     borderColor: theme.colors.border,
-    padding: theme.spacing.md,
-    gap: theme.spacing.sm,
-    shadowColor: '#111A13',
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 1,
+    padding: 18,
+    gap: 12,
   },
 });

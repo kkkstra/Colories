@@ -1,5 +1,11 @@
 import type { PropsWithChildren } from 'react';
-import { ScrollView, type ScrollViewProps, StyleSheet, View } from 'react-native';
+import {
+  Platform,
+  ScrollView,
+  type ScrollViewProps,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { theme } from '@/constants/Theme';
@@ -37,8 +43,12 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
   },
   content: {
-    padding: theme.spacing.md,
-    paddingBottom: 120,
-    gap: theme.spacing.md,
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'web' ? 28 : 14,
+    paddingBottom: 124,
+    gap: 18,
   },
 });

@@ -36,23 +36,26 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 7,
   },
   chip: {
-    borderRadius: 999,
+    borderRadius: theme.radius.small,
+    minHeight: 40,
     paddingHorizontal: 14,
     paddingVertical: 9,
-    backgroundColor: theme.colors.surfaceMuted,
+    backgroundColor: theme.colors.background,
     borderWidth: 1,
     borderColor: theme.colors.border,
+    justifyContent: 'center',
   },
   selected: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.ink,
+    borderColor: theme.colors.ink,
   },
   label: {
     color: theme.colors.text,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
   },
   selectedLabel: {
     color: '#FFFFFF',

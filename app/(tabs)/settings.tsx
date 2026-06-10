@@ -127,30 +127,39 @@ export default function SettingsScreen() {
 
   return (
     <Screen>
-      <View>
-        <Text style={styles.kicker}>本地优先 · BYOK</Text>
-        <Text style={styles.title}>设置</Text>
+      <View style={styles.header}>
+        <Text style={styles.kicker}>SYSTEM / LOCAL FIRST</Text>
+        <Text style={styles.title}>控制台</Text>
+        <Text style={styles.subtitle}>你的数据留在本机，模型服务和密钥由你掌控。</Text>
       </View>
 
-      <Card>
+      <Card style={styles.sectionCard}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>AI 图片识别</Text>
-          <View style={[styles.status, hasApiKey ? styles.statusReady : styles.statusMissing]}>
+          <View style={styles.sectionTitleGroup}>
+            <Text style={styles.sectionNumber}>01</Text>
+            <View>
+              <Text style={styles.sectionEyebrow}>VISION PROVIDER</Text>
+              <Text style={styles.sectionTitle}>AI 图片识别</Text>
+            </View>
+          </View>
+          <View style={styles.statusWrap}>
+            <View style={[styles.statusDot, hasApiKey && styles.statusDotReady]} />
             <Text style={[styles.statusText, hasApiKey && styles.statusReadyText]}>
-              {hasApiKey ? '已配置' : '未配置'}
+              {hasApiKey ? '连接已保存' : '等待配置'}
             </Text>
           </View>
         </View>
 
         <Pressable onPress={useDashScopePreset} style={styles.preset}>
           <View style={styles.presetIcon}>
-            <Ionicons name="sparkles" size={20} color={theme.colors.primary} />
+            <Text style={styles.presetMark}>QW</Text>
           </View>
           <View style={styles.flex}>
-            <Text style={styles.presetTitle}>使用阿里云百炼预设</Text>
-            <Text style={styles.muted}>北京地域 OpenAI 兼容接口</Text>
+            <Text style={styles.presetKicker}>RECOMMENDED PRESET</Text>
+            <Text style={styles.presetTitle}>阿里云百炼视觉模型</Text>
+            <Text style={styles.muted}>北京地域 · OpenAI 兼容接口</Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
+          <Ionicons name="arrow-forward" size={19} color={theme.colors.primary} />
         </Pressable>
 
         <FormField
@@ -180,11 +189,17 @@ export default function SettingsScreen() {
           placeholder={hasApiKey ? '已安全保存；留空表示不替换' : 'sk-...'}
           hint="密钥只写入 iOS Keychain / Android Keystore，不写入 SQLite 或日志。"
         />
-        <AppButton label="测试并保存" onPress={handleTestAndSave} loading={testing} />
+        <AppButton
+          label="测试连接并保存"
+          icon="flash-outline"
+          onPress={handleTestAndSave}
+          loading={testing}
+        />
         {providerConfig ? (
-          <Text style={styles.muted}>
-            当前返回模式：{responseModeLabel(providerConfig.responseMode)}
-          </Text>
+          <View style={styles.modeRow}>
+            <Text style={styles.modeLabel}>STRUCTURED OUTPUT</Text>
+            <Text style={styles.modeValue}>{responseModeLabel(providerConfig.responseMode)}</Text>
+          </View>
         ) : null}
         {hasApiKey ? (
           <Pressable onPress={handleClearKey}>
@@ -193,9 +208,15 @@ export default function SettingsScreen() {
         ) : null}
       </Card>
 
-      <Card>
+      <Card style={styles.sectionCard}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>每日目标</Text>
+          <View style={styles.sectionTitleGroup}>
+            <Text style={[styles.sectionNumber, styles.sectionNumberOrange]}>02</Text>
+            <View>
+              <Text style={styles.sectionEyebrow}>DAILY TARGETS</Text>
+              <Text style={styles.sectionTitle}>每日目标</Text>
+            </View>
+          </View>
           <Pressable onPress={resetTargets}>
             <Text style={styles.reset}>按身体信息重算</Text>
           </Pressable>
@@ -231,27 +252,39 @@ export default function SettingsScreen() {
       </Card>
 
       {profile ? (
-        <Card>
-          <Text style={styles.sectionTitle}>身体信息</Text>
-          <Text style={styles.profileText}>
-            {profile.age} 岁 · {profile.heightCm} cm · {profile.weightKg} kg ·{' '}
-            {profile.goal === 'cut' ? '减脂' : profile.goal === 'gain' ? '增肌' : '维持'}
-          </Text>
-          <Text style={styles.muted}>
-            身体信息用于 Mifflin-St Jeor 公式计算，不会上传到 AI 服务。
-          </Text>
-        </Card>
+        <View style={styles.profilePanel}>
+          <View>
+            <Text style={styles.profileEyebrow}>ATHLETE PROFILE</Text>
+            <Text style={styles.profileTitle}>身体参数</Text>
+          </View>
+          <View style={styles.profileStats}>
+            <ProfileStat label="年龄" value={`${profile.age}`} />
+            <ProfileStat label="身高" value={`${profile.heightCm}`} />
+            <ProfileStat label="体重" value={`${profile.weightKg}`} />
+            <ProfileStat
+              label="目标"
+              value={profile.goal === 'cut' ? '减脂' : profile.goal === 'gain' ? '增肌' : '维持'}
+            />
+          </View>
+          <Text style={styles.profileNote}>仅用于本机计算，不会上传到模型服务。</Text>
+        </View>
       ) : null}
 
-      <Card>
-        <Text style={styles.sectionTitle}>数据与隐私</Text>
+      <View style={styles.privacySection}>
+        <View style={styles.sectionTitleGroup}>
+          <Text style={[styles.sectionNumber, styles.sectionNumberMuted]}>03</Text>
+          <View>
+            <Text style={styles.sectionEyebrow}>DATA CONTROL</Text>
+            <Text style={styles.sectionTitle}>数据与隐私</Text>
+          </View>
+        </View>
         <InfoRow icon="phone-portrait-outline" text="饮食记录、身体信息和缩略图保存在本机。" />
         <InfoRow icon="cloud-upload-outline" text="只有待识别的压缩照片会发送到你配置的模型服务。" />
         <InfoRow icon="shield-checkmark-outline" text="卸载 App 会删除 SQLite 数据；iOS Keychain 中的密钥可能按系统规则保留。" />
         <Text style={styles.disclaimer}>
           本应用提供的食物识别和营养数据仅为估算，不用于医疗诊断、治疗或处方。
         </Text>
-      </Card>
+      </View>
     </Screen>
   );
 }
@@ -281,8 +314,19 @@ function TargetField({
 function InfoRow({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) {
   return (
     <View style={styles.infoRow}>
-      <Ionicons name={icon} size={20} color={theme.colors.primary} />
+      <View style={styles.infoIcon}>
+        <Ionicons name={icon} size={18} color={theme.colors.primary} />
+      </View>
       <Text style={styles.infoText}>{text}</Text>
+    </View>
+  );
+}
+
+function ProfileStat({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.profileStat}>
+      <Text style={styles.profileStatValue}>{value}</Text>
+      <Text style={styles.profileStatLabel}>{label}</Text>
     </View>
   );
 }
@@ -294,15 +338,31 @@ function responseModeLabel(mode: string): string {
 }
 
 const styles = StyleSheet.create({
+  header: {
+    gap: 5,
+    marginTop: 4,
+  },
   kicker: {
-    color: theme.colors.accent,
-    fontWeight: '800',
+    color: theme.colors.primary,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1.2,
   },
   title: {
     color: theme.colors.text,
-    fontSize: 28,
-    fontWeight: '800',
-    marginTop: 4,
+    fontSize: 34,
+    lineHeight: 40,
+    fontWeight: '900',
+    letterSpacing: -1.2,
+  },
+  subtitle: {
+    color: theme.colors.textMuted,
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  sectionCard: {
+    padding: 20,
+    gap: 16,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -310,49 +370,100 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
   },
+  sectionTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  sectionNumber: {
+    width: 37,
+    height: 37,
+    borderRadius: 9,
+    backgroundColor: theme.colors.primary,
+    color: '#FFFFFF',
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    lineHeight: 37,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
+  sectionNumberOrange: {
+    backgroundColor: theme.colors.accent,
+  },
+  sectionNumberMuted: {
+    backgroundColor: theme.colors.ink,
+  },
+  sectionEyebrow: {
+    color: theme.colors.textFaint,
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 1.1,
+    marginBottom: 2,
+  },
   sectionTitle: {
     color: theme.colors.text,
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 19,
+    fontWeight: '900',
+    letterSpacing: -0.3,
   },
-  status: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+  statusWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
-  statusReady: {
-    backgroundColor: theme.colors.primarySoft,
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 2,
+    backgroundColor: theme.colors.accent,
   },
-  statusMissing: {
-    backgroundColor: '#F1E8E7',
+  statusDotReady: {
+    backgroundColor: theme.colors.success,
   },
   statusText: {
-    color: theme.colors.danger,
-    fontSize: 11,
-    fontWeight: '800',
+    color: theme.colors.textMuted,
+    fontSize: 10,
+    fontWeight: '900',
   },
   statusReadyText: {
-    color: theme.colors.primary,
+    color: theme.colors.success,
   },
   preset: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    padding: 12,
-    backgroundColor: theme.colors.surfaceMuted,
-    borderRadius: theme.radius.small,
+    gap: 13,
+    padding: 15,
+    backgroundColor: theme.colors.primarySoft,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
   },
   presetIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: theme.colors.primarySoft,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  presetMark: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  presetKicker: {
+    color: theme.colors.primary,
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
   presetTitle: {
     color: theme.colors.text,
-    fontWeight: '800',
+    fontSize: 15,
+    fontWeight: '900',
+    marginTop: 2,
   },
   flex: {
     flex: 1,
@@ -365,13 +476,33 @@ const styles = StyleSheet.create({
   clearKey: {
     color: theme.colors.danger,
     textAlign: 'center',
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '800',
     paddingVertical: 5,
+  },
+  modeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  modeLabel: {
+    color: theme.colors.textFaint,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
+  modeValue: {
+    color: theme.colors.text,
+    fontSize: 12,
+    fontWeight: '900',
   },
   reset: {
     color: theme.colors.primary,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   targetGrid: {
     flexDirection: 'row',
@@ -382,26 +513,78 @@ const styles = StyleSheet.create({
     width: '47%',
     flexGrow: 1,
   },
-  profileText: {
-    color: theme.colors.text,
-    fontSize: 15,
-    lineHeight: 22,
+  profilePanel: {
+    backgroundColor: theme.colors.ink,
+    borderRadius: theme.radius.large,
+    padding: 20,
+    gap: 16,
+  },
+  profileEyebrow: {
+    color: '#98A2B3',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.1,
+  },
+  profileTitle: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '900',
+    marginTop: 3,
+  },
+  profileStats: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  profileStat: {
+    flex: 1,
+    paddingTop: 10,
+    borderTopWidth: 3,
+    borderTopColor: theme.colors.primary,
+  },
+  profileStatValue: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+  profileStatLabel: {
+    color: '#98A2B3',
+    fontSize: 10,
+    marginTop: 3,
+  },
+  profileNote: {
+    color: '#AEB9CD',
+    fontSize: 11,
+  },
+  privacySection: {
+    gap: 13,
+    paddingHorizontal: 2,
   },
   infoRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 4,
+  },
+  infoIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: theme.colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   infoText: {
     flex: 1,
     color: theme.colors.text,
-    lineHeight: 21,
+    fontSize: 13,
+    lineHeight: 20,
   },
   disclaimer: {
     color: theme.colors.warning,
-    backgroundColor: '#FFF8EA',
+    backgroundColor: theme.colors.warningSoft,
     borderRadius: theme.radius.small,
-    padding: 10,
+    padding: 13,
     fontSize: 12,
     lineHeight: 18,
   },
