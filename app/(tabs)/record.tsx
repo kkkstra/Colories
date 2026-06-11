@@ -3,21 +3,15 @@ import { Redirect, router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import {
-  Image,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { MealItemEditor } from '@/components/MealItemEditor';
 import { AppButton } from '@/components/ui/AppButton';
 import { Card } from '@/components/ui/Card';
 import { ChoiceChips } from '@/components/ui/ChoiceChips';
 import { FormField } from '@/components/ui/FormField';
+import { MacroStrip } from '@/components/ui/MacroStrip';
 import { Screen } from '@/components/ui/Screen';
-import { MealItemEditor } from '@/components/MealItemEditor';
 import { theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
 import { AIProviderError, recognizeFoodImage } from '@/lib/ai';
@@ -233,41 +227,34 @@ export default function RecordScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <Text style={styles.kicker}>ADD / MEAL</Text>
-        <Text style={styles.title}>把这一餐记准</Text>
-        <Text style={styles.subtitle}>先拍照识别，再逐项确认食物和份量。</Text>
+        <View style={styles.titleIcon}>
+          <Ionicons name="scan" size={22} color={theme.colors.primary} />
+        </View>
+        <Text style={styles.title}>记录一餐</Text>
       </View>
 
-      <View style={styles.mealSelector}>
-        <View style={styles.selectorHeader}>
-          <Text style={styles.selectorIndex}>01</Text>
-          <Text style={styles.selectorLabel}>选择餐次</Text>
-        </View>
-        <ChoiceChips
-          value={mealType}
-          onChange={setMealType}
-          options={[
-            { label: '早餐', value: 'breakfast' },
-            { label: '午餐', value: 'lunch' },
-            { label: '晚餐', value: 'dinner' },
-            { label: '加餐', value: 'snack' },
-          ]}
-        />
-      </View>
+      <ChoiceChips
+        value={mealType}
+        onChange={setMealType}
+        options={[
+          { label: '早餐', value: 'breakfast', icon: 'sunny-outline' },
+          { label: '午餐', value: 'lunch', icon: 'restaurant-outline' },
+          { label: '晚餐', value: 'dinner', icon: 'moon-outline' },
+          { label: '加餐', value: 'snack', icon: 'cafe-outline' },
+        ]}
+      />
 
       <View style={styles.photoActions}>
         <PhotoButton
           icon="camera"
-          label="拍照识别"
-          hint="现场拍下整套餐食"
+          label="拍照"
           onPress={() => chooseImage('camera')}
           disabled={busy}
           primary
         />
         <PhotoButton
-          icon="images-outline"
-          label="选择照片"
-          hint="使用已有的餐食图片"
+          icon="image-outline"
+          label="相册"
           onPress={() => chooseImage('library')}
           disabled={busy}
         />
@@ -276,36 +263,36 @@ export default function RecordScreen() {
       {busy ? (
         <Card style={styles.processing}>
           <View style={styles.processingIcon}>
-            <Ionicons name="scan-outline" size={25} color="#FFFFFF" />
+            <Ionicons name="scan-outline" size={24} color="#FFFFFF" />
           </View>
-          <View style={styles.processingCopy}>
-            <Text style={styles.processingEyebrow}>VISION MODEL ACTIVE</Text>
-            <Text style={styles.processingTitle}>正在分析食物与份量</Text>
-            <Text style={styles.muted}>识别结果不会自动保存。</Text>
-          </View>
+          <Text style={styles.processingTitle}>正在识别食物与份量</Text>
         </Card>
       ) : null}
 
       {photoUri ? <Image source={{ uri: photoUri }} style={styles.photo} /> : null}
 
       <View style={styles.sectionHeader}>
-        <View>
-          <Text style={styles.sectionIndex}>02 / REVIEW</Text>
-          <Text style={styles.sectionTitle}>核对食物明细</Text>
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>食物</Text>
+          <Text style={styles.itemCount}>{items.length}</Text>
         </View>
-        <Pressable onPress={() => setSearching((value) => !value)} style={styles.addLink}>
-          <Text style={styles.addLinkText}>手动添加</Text>
-          <Ionicons name={searching ? 'close' : 'add'} size={18} color={theme.colors.primary} />
+        <Pressable
+          accessibilityLabel={searching ? '关闭食物搜索' : '手动添加食物'}
+          accessibilityRole="button"
+          onPress={() => setSearching((value) => !value)}
+          style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
+        >
+          <Ionicons name={searching ? 'close' : 'add'} size={20} color={theme.colors.primary} />
         </Pressable>
       </View>
 
       {searching ? (
         <Card>
           <FormField
-            label="搜索本地食物库"
+            label="搜索食物"
             value={query}
             onChangeText={setQuery}
-            placeholder="例如：鸡胸肉、米饭、酸奶"
+            placeholder="鸡胸肉、米饭、酸奶…"
             autoFocus
           />
           <View style={styles.searchResults}>
@@ -318,7 +305,7 @@ export default function RecordScreen() {
                 <View style={styles.flex}>
                   <Text style={styles.searchName}>{food.nameZh}</Text>
                   <Text style={styles.muted}>
-                    每100g · {Math.round(food.calories)} kcal · 蛋白质 {food.protein}g
+                    100g · {Math.round(food.calories)} kcal
                   </Text>
                 </View>
                 <Ionicons name="add" size={22} color={theme.colors.primary} />
@@ -335,11 +322,10 @@ export default function RecordScreen() {
 
       {items.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyNumber}>00</Text>
-          <View style={styles.emptyCopy}>
-            <Text style={styles.emptyTitle}>还没有待确认的食物</Text>
-            <Text style={styles.muted}>拍照识别，或从本地营养库手动添加。</Text>
+          <View style={styles.emptyIcon}>
+            <Ionicons name="scan-outline" size={27} color={theme.colors.primary} />
           </View>
+          <Text style={styles.emptyTitle}>拍照或添加食物</Text>
         </View>
       ) : (
         items.map((item, index) => (
@@ -356,42 +342,38 @@ export default function RecordScreen() {
 
       {items.length > 0 ? (
         <View style={styles.totalCard}>
-          <View>
-            <Text style={styles.totalLabel}>MEAL TOTAL</Text>
-            <Text style={styles.totalMacros}>
-              P {Math.round(totals.protein)}g · C {Math.round(totals.carbs)}g · F{' '}
-              {Math.round(totals.fat)}g
-            </Text>
+          <View style={styles.totalVisual}>
+            <Ionicons name="flash" size={18} color={theme.colors.accent} />
+            <View style={styles.totalStrip}>
+              <MacroStrip protein={totals.protein} carbs={totals.carbs} fat={totals.fat} />
+            </View>
           </View>
           <View style={styles.totalRight}>
             <Text style={styles.totalCalories}>{Math.round(totals.calories)}</Text>
-            <Text style={styles.totalUnit}>KCAL</Text>
+            <Text style={styles.totalUnit}>kcal</Text>
           </View>
         </View>
       ) : null}
 
       <View style={styles.notesWrap}>
-        <Text style={styles.notesLabel}>餐食备注 / 可选</Text>
+        <Ionicons name="create-outline" size={19} color={theme.colors.textMuted} />
         <TextInput
           value={notes}
           onChangeText={setNotes}
-          placeholder="例如：酱汁另放、鸡胸肉去皮"
+          placeholder="添加备注（可选）"
           placeholderTextColor={theme.colors.textFaint}
           style={styles.notes}
-          multiline
         />
       </View>
 
       <AppButton
-        label="确认并保存本餐"
+        label="保存"
         icon="checkmark"
         onPress={handleSave}
         loading={saving}
         disabled={busy}
       />
-      <Text style={styles.disclaimer}>
-        拍照识别与营养数据均为估算。请根据实际食材、油量和份量进行修正。
-      </Text>
+      <Text style={styles.disclaimer}>营养数据为估算值，请按实际份量修正。</Text>
     </Screen>
   );
 }
@@ -399,20 +381,19 @@ export default function RecordScreen() {
 function PhotoButton({
   icon,
   label,
-  hint,
   onPress,
   disabled,
   primary = false,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
-  hint: string;
   onPress: () => void;
   disabled: boolean;
   primary?: boolean;
 }) {
   return (
     <Pressable
+      accessibilityRole="button"
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => [
@@ -423,116 +404,67 @@ function PhotoButton({
       ]}
     >
       <View style={[styles.photoIcon, primary && styles.photoIconPrimary]}>
-        <Ionicons name={icon} size={26} color={primary ? '#FFFFFF' : theme.colors.primary} />
+        <Ionicons name={icon} size={34} color={primary ? '#FFFFFF' : theme.colors.primary} />
       </View>
-      <View style={styles.photoButtonCopy}>
-        <Text style={[styles.photoButtonText, primary && styles.photoButtonTextPrimary]}>
-          {label}
-        </Text>
-        <Text style={[styles.photoButtonHint, primary && styles.photoButtonHintPrimary]}>
-          {hint}
-        </Text>
-      </View>
-      <Ionicons
-        name="arrow-forward"
-        size={18}
-        color={primary ? '#FFFFFF' : theme.colors.textMuted}
-      />
+      <Text style={[styles.photoButtonText, primary && styles.photoButtonTextPrimary]}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   header: {
-    gap: 5,
-    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 2,
+    paddingBottom: 2,
   },
-  kicker: {
-    color: theme.colors.primary,
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 1.2,
+  titleIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: theme.colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     color: theme.colors.text,
-    fontSize: 34,
-    lineHeight: 40,
+    fontSize: 30,
     fontWeight: '900',
-    letterSpacing: -1.2,
-  },
-  subtitle: {
-    color: theme.colors.textMuted,
-    fontSize: 14,
-    lineHeight: 21,
-  },
-  mealSelector: {
-    gap: 12,
-    paddingVertical: 4,
-  },
-  selectorHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-  },
-  selectorIndex: {
-    color: theme.colors.accent,
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
-  selectorLabel: {
-    color: theme.colors.text,
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  sectionTitle: {
-    color: theme.colors.text,
-    fontSize: 21,
-    fontWeight: '900',
-    letterSpacing: -0.4,
-  },
-  sectionIndex: {
-    color: theme.colors.primary,
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 1.1,
-    marginBottom: 3,
+    letterSpacing: -0.9,
   },
   photoActions: {
+    flexDirection: 'row',
     gap: 10,
   },
   photoButton: {
-    minHeight: 86,
-    borderRadius: theme.radius.medium,
+    flex: 1,
+    minHeight: 132,
+    borderRadius: 20,
     backgroundColor: theme.colors.surface,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 13,
+    padding: 16,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
     borderWidth: 1,
-    borderColor: theme.colors.borderStrong,
+    borderColor: theme.colors.border,
   },
   photoButtonPrimary: {
-    minHeight: 108,
+    flex: 1.35,
     backgroundColor: theme.colors.primary,
     borderColor: theme.colors.primary,
   },
   photoIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 13,
+    width: 56,
+    height: 56,
+    borderRadius: 18,
     backgroundColor: theme.colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
   photoIconPrimary: {
-    width: 58,
-    height: 58,
-    borderRadius: 17,
     backgroundColor: 'rgba(255,255,255,0.16)',
-  },
-  photoButtonCopy: {
-    flex: 1,
   },
   photoButtonText: {
     color: theme.colors.text,
@@ -541,21 +473,12 @@ const styles = StyleSheet.create({
   },
   photoButtonTextPrimary: {
     color: '#FFFFFF',
-    fontSize: 20,
-  },
-  photoButtonHint: {
-    color: theme.colors.textMuted,
-    fontSize: 12,
-    marginTop: 4,
-  },
-  photoButtonHintPrimary: {
-    color: '#DCE4FF',
   },
   disabled: {
     opacity: 0.5,
   },
   pressed: {
-    opacity: 0.8,
+    opacity: 0.72,
   },
   processing: {
     flexDirection: 'row',
@@ -563,30 +486,21 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.primary,
   },
   processingIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 13,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     backgroundColor: theme.colors.ink,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  processingCopy: {
-    flex: 1,
-  },
-  processingEyebrow: {
-    color: theme.colors.primary,
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
   processingTitle: {
     color: theme.colors.text,
+    fontSize: 15,
     fontWeight: '900',
-    marginTop: 2,
   },
   photo: {
     width: '100%',
-    height: 260,
+    height: 250,
     borderRadius: theme.radius.large,
     backgroundColor: theme.colors.surfaceMuted,
   },
@@ -594,17 +508,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingTop: 5,
   },
-  addLink: {
+  sectionTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    paddingVertical: 8,
+    gap: 9,
   },
-  addLinkText: {
-    color: theme.colors.primary,
-    fontSize: 13,
-    fontWeight: '800',
+  sectionTitle: {
+    color: theme.colors.text,
+    fontSize: 21,
+    fontWeight: '900',
+    letterSpacing: -0.4,
+  },
+  itemCount: {
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: theme.colors.surfaceMuted,
+    color: theme.colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 24,
+    fontSize: 11,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+  addButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: theme.colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   searchResults: {
     maxHeight: 330,
@@ -622,7 +557,7 @@ const styles = StyleSheet.create({
   },
   searchName: {
     color: theme.colors.text,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   muted: {
     color: theme.colors.textMuted,
@@ -630,25 +565,23 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   empty: {
-    minHeight: 112,
+    minHeight: 104,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-    padding: 18,
+    gap: 14,
+    padding: 17,
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: theme.colors.borderStrong,
-    borderRadius: theme.radius.medium,
+    borderRadius: 18,
   },
-  emptyNumber: {
-    color: theme.colors.borderStrong,
-    fontSize: 38,
-    fontWeight: '900',
-    letterSpacing: -2,
-  },
-  emptyCopy: {
-    flex: 1,
-    gap: 4,
+  emptyIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 17,
+    backgroundColor: theme.colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyTitle: {
     color: theme.colors.text,
@@ -657,18 +590,22 @@ const styles = StyleSheet.create({
   },
   totalCard: {
     backgroundColor: theme.colors.ink,
-    borderRadius: theme.radius.medium,
+    borderRadius: 18,
     paddingHorizontal: 18,
-    paddingVertical: 17,
+    paddingVertical: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 18,
   },
-  totalLabel: {
-    color: '#AEB9CD',
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 1.2,
+  totalVisual: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  totalStrip: {
+    flex: 1,
   },
   totalCalories: {
     color: '#FFFFFF',
@@ -677,43 +614,34 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     fontVariant: ['tabular-nums'],
   },
-  totalMacros: {
-    color: '#D0D5DD',
-    fontSize: 12,
-    marginTop: 6,
-  },
   totalRight: {
     alignItems: 'flex-end',
   },
   totalUnit: {
-    color: theme.colors.accent,
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 1.2,
+    color: '#AEB9CD',
+    fontSize: 10,
+    fontWeight: '800',
   },
   notesWrap: {
-    gap: 7,
-  },
-  notesLabel: {
-    color: theme.colors.textMuted,
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 0.6,
-  },
-  notes: {
-    minHeight: 76,
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    borderRadius: theme.radius.small,
+    borderRadius: 13,
     backgroundColor: theme.colors.surface,
-    padding: 14,
+    paddingHorizontal: 14,
+  },
+  notes: {
+    flex: 1,
+    minHeight: 50,
     color: theme.colors.text,
-    textAlignVertical: 'top',
+    fontSize: 14,
   },
   disclaimer: {
-    color: theme.colors.textMuted,
+    color: theme.colors.textFaint,
     fontSize: 11,
     textAlign: 'center',
-    lineHeight: 17,
   },
 });

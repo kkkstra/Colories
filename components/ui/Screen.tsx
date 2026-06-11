@@ -44,11 +44,11 @@ const styles = StyleSheet.create({
   },
   content: {
     width: '100%',
-    maxWidth: 760,
+    maxWidth: 680,
     alignSelf: 'center',
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'web' ? 28 : 14,
-    paddingBottom: 124,
-    gap: 18,
+    paddingTop: Platform.OS === 'web' ? 24 : 12,
+    paddingBottom: 108,
+    gap: 14,
   },
 });

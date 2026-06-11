@@ -72,9 +72,10 @@ export default function EditMealScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <Text style={styles.kicker}>EDIT / MEAL</Text>
-        <Text style={styles.title}>修正这餐数据</Text>
-        <Text style={styles.subtitle}>修改后会立即更新今日和历史统计。</Text>
+        <View style={styles.titleIcon}>
+          <Text style={styles.titleIconText}>{items.length}</Text>
+        </View>
+        <Text style={styles.title}>编辑记录</Text>
       </View>
       {meal.photoUri ? <Image source={{ uri: meal.photoUri }} style={styles.photo} /> : null}
       {items.map((item, index) => (
@@ -92,16 +93,17 @@ export default function EditMealScreen() {
         />
       ))}
       <View style={styles.total}>
-        <View>
-          <Text style={styles.totalLabel}>UPDATED TOTAL</Text>
-          <Text style={styles.totalMeta}>
-            P {Math.round(totals.protein)}g · C {Math.round(totals.carbs)}g · F{' '}
-            {Math.round(totals.fat)}g
-          </Text>
+        <View style={styles.totalMacros}>
+          <View style={[styles.totalDot, { backgroundColor: theme.colors.protein }]} />
+          <Text style={styles.totalMeta}>{Math.round(totals.protein)}</Text>
+          <View style={[styles.totalDot, { backgroundColor: theme.colors.carbs }]} />
+          <Text style={styles.totalMeta}>{Math.round(totals.carbs)}</Text>
+          <View style={[styles.totalDot, { backgroundColor: theme.colors.fat }]} />
+          <Text style={styles.totalMeta}>{Math.round(totals.fat)}</Text>
         </View>
         <View style={styles.totalRight}>
           <Text style={styles.totalValue}>{Math.round(totals.calories)}</Text>
-          <Text style={styles.totalUnit}>KCAL</Text>
+          <Text style={styles.totalUnit}>kcal</Text>
         </View>
       </View>
       <AppButton label="保存修改" icon="checkmark" onPress={handleSave} loading={saving} />
@@ -112,24 +114,29 @@ export default function EditMealScreen() {
 
 const styles = StyleSheet.create({
   header: {
-    gap: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     marginTop: 4,
   },
-  kicker: {
+  titleIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: theme.colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  titleIconText: {
     color: theme.colors.primary,
-    fontSize: 10,
+    fontSize: 15,
     fontWeight: '900',
-    letterSpacing: 1.2,
   },
   title: {
     color: theme.colors.text,
     fontSize: 30,
     fontWeight: '900',
     letterSpacing: -0.8,
-  },
-  subtitle: {
-    color: theme.colors.textMuted,
-    fontSize: 13,
   },
   loading: {
     color: theme.colors.textMuted,
@@ -150,12 +157,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  totalLabel: {
-    color: '#AEB9CD',
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 1.1,
-  },
   totalValue: {
     color: '#FFFFFF',
     fontSize: 34,
@@ -166,7 +167,18 @@ const styles = StyleSheet.create({
   totalMeta: {
     color: '#D0D5DD',
     fontSize: 12,
-    marginTop: 6,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
+  totalMacros: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  totalDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
   },
   totalRight: {
     alignItems: 'flex-end',

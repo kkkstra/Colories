@@ -1,3 +1,4 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { theme } from '@/constants/Theme';
@@ -5,6 +6,7 @@ import { theme } from '@/constants/Theme';
 interface Option<T extends string> {
   label: string;
   value: T;
+  icon?: keyof typeof Ionicons.glyphMap;
 }
 
 interface Props<T extends string> {
@@ -21,9 +23,18 @@ export function ChoiceChips<T extends string>({ options, value, onChange }: Prop
         return (
           <Pressable
             key={option.value}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
             onPress={() => onChange(option.value)}
             style={[styles.chip, selected && styles.selected]}
           >
+            {option.icon ? (
+              <Ionicons
+                name={option.icon}
+                size={17}
+                color={selected ? '#FFFFFF' : theme.colors.textMuted}
+              />
+            ) : null}
             <Text style={[styles.label, selected && styles.selectedLabel]}>{option.label}</Text>
           </Pressable>
         );
@@ -46,6 +57,9 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
     borderWidth: 1,
     borderColor: theme.colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
     justifyContent: 'center',
   },
   selected: {

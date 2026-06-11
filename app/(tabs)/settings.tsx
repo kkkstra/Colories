@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { Card } from '@/components/ui/Card';
@@ -23,6 +23,8 @@ type ProviderFeedback = {
   message: string;
 };
 
+type ExpandedSection = 'provider' | 'targets' | null;
+
 export default function SettingsScreen() {
   const {
     profile,
@@ -42,6 +44,9 @@ export default function SettingsScreen() {
     targets ?? { calories: 2000, protein: 130, carbs: 240, fat: 60 },
   );
   const [savingTargets, setSavingTargets] = useState(false);
+  const [expandedSection, setExpandedSection] = useState<ExpandedSection>(
+    hasApiKey ? null : 'provider',
+  );
 
   useEffect(() => {
     if (providerConfig) {
@@ -83,7 +88,7 @@ export default function SettingsScreen() {
       setApiKey('');
       setProviderFeedback({
         tone: 'success',
-        message: `连接成功。图片输入可用，结构化返回模式：${responseModeLabel(verified.responseMode)}。`,
+        message: `连接成功 · ${responseModeLabel(verified.responseMode)}`,
       });
     } catch (error) {
       const message =
@@ -125,6 +130,7 @@ export default function SettingsScreen() {
     try {
       await persistTargets(targetDraft);
       showAlert('目标已更新');
+      setExpandedSection(null);
     } finally {
       setSavingTargets(false);
     }
@@ -136,218 +142,278 @@ export default function SettingsScreen() {
     }
   };
 
+  const toggleSection = (section: Exclude<ExpandedSection, null>) => {
+    setExpandedSection((current) => (current === section ? null : section));
+  };
+
   return (
     <Screen>
-      <View style={styles.header}>
-        <Text style={styles.kicker}>SYSTEM / LOCAL FIRST</Text>
-        <Text style={styles.title}>控制台</Text>
-        <Text style={styles.subtitle}>你的数据留在本机，模型服务和密钥由你掌控。</Text>
-      </View>
+      <Text style={styles.title}>设置</Text>
 
       <Card style={styles.sectionCard}>
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionTitleGroup}>
-            <Text style={styles.sectionNumber}>01</Text>
-            <View>
-              <Text style={styles.sectionEyebrow}>VISION PROVIDER</Text>
-              <Text style={styles.sectionTitle}>AI 图片识别</Text>
-            </View>
-          </View>
-          <View style={styles.statusWrap}>
-            <View style={[styles.statusDot, hasApiKey && styles.statusDotReady]} />
-            <Text style={[styles.statusText, hasApiKey && styles.statusReadyText]}>
-              {hasApiKey ? '连接已保存' : '等待配置'}
-            </Text>
-          </View>
-        </View>
+        <SectionSummary
+          icon="sparkles"
+          title="AI 识别"
+          value={hasApiKey ? providerConfig?.model ?? '已连接' : '未配置'}
+          active={hasApiKey}
+          expanded={expandedSection === 'provider'}
+          onPress={() => toggleSection('provider')}
+        />
 
-        <Pressable onPress={useDashScopePreset} style={styles.preset}>
-          <View style={styles.presetIcon}>
-            <Text style={styles.presetMark}>QW</Text>
-          </View>
-          <View style={styles.flex}>
-            <Text style={styles.presetKicker}>RECOMMENDED PRESET</Text>
-            <Text style={styles.presetTitle}>阿里云百炼视觉模型</Text>
-            <Text style={styles.muted}>北京地域 · OpenAI 兼容接口</Text>
-          </View>
-          <Ionicons name="arrow-forward" size={19} color={theme.colors.primary} />
-        </Pressable>
-
-        <FormField
-          label="Base URL"
-          value={baseUrl}
-          onChangeText={(value) => {
-            setBaseUrl(value);
-            setProviderFeedback(null);
-          }}
-          autoCapitalize="none"
-          autoCorrect={false}
-          placeholder="https://example.com/v1"
-          hint="App 会在末尾补充 /chat/completions；也可直接填写完整地址。"
-        />
-        <FormField
-          label="模型名"
-          value={model}
-          onChangeText={(value) => {
-            setModel(value);
-            setProviderFeedback(null);
-          }}
-          autoCapitalize="none"
-          autoCorrect={false}
-          placeholder="支持图片输入的模型 ID"
-        />
-        <FormField
-          label={hasApiKey ? '替换 API Key' : 'API Key'}
-          value={apiKey}
-          onChangeText={(value) => {
-            setApiKey(value);
-            setProviderFeedback(null);
-          }}
-          autoCapitalize="none"
-          autoCorrect={false}
-          secureTextEntry
-          placeholder={hasApiKey ? '已安全保存；留空表示不替换' : 'sk-...'}
-          hint={
-            Platform.OS === 'web'
-              ? '浏览器中只保存在当前站点的 localStorage，不写入 SQLite 或日志。'
-              : '密钥只写入 iOS Keychain / Android Keystore，不写入 SQLite 或日志。'
-          }
-        />
-        <AppButton
-          label={hasApiKey && !apiKey.trim() ? '重新测试并保存配置' : '测试连接并保存'}
-          icon="flash-outline"
-          onPress={handleTestAndSave}
-          loading={testing}
-        />
-        {providerFeedback ? (
-          <View
-            accessibilityRole="alert"
-            style={[
-              styles.feedback,
-              providerFeedback.tone === 'success' && styles.feedbackSuccess,
-              providerFeedback.tone === 'error' && styles.feedbackError,
-            ]}
-          >
-            <Ionicons
-              name={
-                providerFeedback.tone === 'success'
-                  ? 'checkmark-circle'
-                  : providerFeedback.tone === 'error'
-                    ? 'alert-circle'
-                    : 'time'
-              }
-              size={18}
-              color={
-                providerFeedback.tone === 'success'
-                  ? theme.colors.success
-                  : providerFeedback.tone === 'error'
-                    ? theme.colors.danger
-                    : theme.colors.primary
-              }
-            />
-            <Text
-              selectable
-              style={[
-                styles.feedbackText,
-                providerFeedback.tone === 'success' && styles.feedbackSuccessText,
-                providerFeedback.tone === 'error' && styles.feedbackErrorText,
-              ]}
+        {expandedSection === 'provider' ? (
+          <View style={styles.sectionBody}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={useDashScopePreset}
+              style={({ pressed }) => [styles.preset, pressed && styles.pressed]}
             >
-              {providerFeedback.message}
-            </Text>
+              <View style={styles.presetIcon}>
+                <Text style={styles.presetMark}>QW</Text>
+              </View>
+              <Text style={styles.presetTitle}>使用百炼预设</Text>
+              <Ionicons name="arrow-forward" size={18} color={theme.colors.primary} />
+            </Pressable>
+
+            <FormField
+              label="Base URL"
+              value={baseUrl}
+              onChangeText={(value) => {
+                setBaseUrl(value);
+                setProviderFeedback(null);
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="https://example.com/v1"
+            />
+            <FormField
+              label="模型"
+              value={model}
+              onChangeText={(value) => {
+                setModel(value);
+                setProviderFeedback(null);
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="支持图片输入的模型 ID"
+            />
+            <FormField
+              label={hasApiKey ? '替换 API Key' : 'API Key'}
+              value={apiKey}
+              onChangeText={(value) => {
+                setApiKey(value);
+                setProviderFeedback(null);
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+              placeholder={hasApiKey ? '已安全保存' : 'sk-…'}
+            />
+            <AppButton
+              label="测试并保存"
+              icon="flash-outline"
+              onPress={handleTestAndSave}
+              loading={testing}
+            />
+
+            {providerFeedback ? (
+              <View
+                accessibilityRole="alert"
+                style={[
+                  styles.feedback,
+                  providerFeedback.tone === 'success' && styles.feedbackSuccess,
+                  providerFeedback.tone === 'error' && styles.feedbackError,
+                ]}
+              >
+                <Ionicons
+                  name={
+                    providerFeedback.tone === 'success'
+                      ? 'checkmark-circle'
+                      : providerFeedback.tone === 'error'
+                        ? 'alert-circle'
+                        : 'time'
+                  }
+                  size={18}
+                  color={
+                    providerFeedback.tone === 'success'
+                      ? theme.colors.success
+                      : providerFeedback.tone === 'error'
+                        ? theme.colors.danger
+                        : theme.colors.primary
+                  }
+                />
+                <Text selectable style={styles.feedbackText}>
+                  {providerFeedback.message}
+                </Text>
+              </View>
+            ) : null}
+
+            {providerConfig ? (
+              <View style={styles.modeRow}>
+                <Ionicons name="code-slash-outline" size={17} color={theme.colors.textMuted} />
+                <Text style={styles.modeValue}>
+                  {responseModeLabel(providerConfig.responseMode)}
+                </Text>
+              </View>
+            ) : null}
+
+            {hasApiKey ? (
+              <Pressable accessibilityRole="button" onPress={handleClearKey}>
+                <Text style={styles.clearKey}>清除 API Key</Text>
+              </Pressable>
+            ) : null}
           </View>
-        ) : null}
-        {providerConfig ? (
-          <View style={styles.modeRow}>
-            <Text style={styles.modeLabel}>STRUCTURED OUTPUT</Text>
-            <Text style={styles.modeValue}>{responseModeLabel(providerConfig.responseMode)}</Text>
-          </View>
-        ) : null}
-        {hasApiKey ? (
-          <Pressable onPress={handleClearKey}>
-            <Text style={styles.clearKey}>清除本机 API Key</Text>
-          </Pressable>
         ) : null}
       </Card>
 
       <Card style={styles.sectionCard}>
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionTitleGroup}>
-            <Text style={[styles.sectionNumber, styles.sectionNumberOrange]}>02</Text>
-            <View>
-              <Text style={styles.sectionEyebrow}>DAILY TARGETS</Text>
-              <Text style={styles.sectionTitle}>每日目标</Text>
+        <SectionSummary
+          icon="speedometer"
+          title="每日目标"
+          value={`${Math.round(targetDraft.calories)} kcal`}
+          expanded={expandedSection === 'targets'}
+          onPress={() => toggleSection('targets')}
+        />
+
+        <View style={styles.targetSummary}>
+          <TargetMetric label="热" value={targetDraft.calories} color={theme.colors.primary} />
+          <TargetMetric label="蛋" value={targetDraft.protein} color={theme.colors.protein} />
+          <TargetMetric label="碳" value={targetDraft.carbs} color={theme.colors.carbs} />
+          <TargetMetric label="脂" value={targetDraft.fat} color={theme.colors.fat} />
+        </View>
+
+        {expandedSection === 'targets' ? (
+          <View style={styles.sectionBody}>
+            <View style={styles.targetGrid}>
+              <TargetField
+                label="热量 kcal"
+                value={targetDraft.calories}
+                onChange={(value) => updateTarget('calories', value)}
+              />
+              <TargetField
+                label="蛋白质 g"
+                value={targetDraft.protein}
+                onChange={(value) => updateTarget('protein', value)}
+              />
+              <TargetField
+                label="碳水 g"
+                value={targetDraft.carbs}
+                onChange={(value) => updateTarget('carbs', value)}
+              />
+              <TargetField
+                label="脂肪 g"
+                value={targetDraft.fat}
+                onChange={(value) => updateTarget('fat', value)}
+              />
+            </View>
+            <View style={styles.targetActions}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={resetTargets}
+                style={styles.resetButton}
+              >
+                <Ionicons name="refresh" size={17} color={theme.colors.primary} />
+                <Text style={styles.resetText}>重算</Text>
+              </Pressable>
+              <View style={styles.saveTargetButton}>
+                <AppButton
+                  label="保存目标"
+                  onPress={handleSaveTargets}
+                  loading={savingTargets}
+                />
+              </View>
             </View>
           </View>
-          <Pressable onPress={resetTargets}>
-            <Text style={styles.reset}>按身体信息重算</Text>
-          </Pressable>
-        </View>
-        <View style={styles.targetGrid}>
-          <TargetField
-            label="热量 kcal"
-            value={targetDraft.calories}
-            onChange={(value) => updateTarget('calories', value)}
-          />
-          <TargetField
-            label="蛋白质 g"
-            value={targetDraft.protein}
-            onChange={(value) => updateTarget('protein', value)}
-          />
-          <TargetField
-            label="碳水 g"
-            value={targetDraft.carbs}
-            onChange={(value) => updateTarget('carbs', value)}
-          />
-          <TargetField
-            label="脂肪 g"
-            value={targetDraft.fat}
-            onChange={(value) => updateTarget('fat', value)}
-          />
-        </View>
-        <AppButton
-          label="保存每日目标"
-          variant="secondary"
-          onPress={handleSaveTargets}
-          loading={savingTargets}
-        />
+        ) : null}
       </Card>
 
       {profile ? (
-        <View style={styles.profilePanel}>
-          <View>
-            <Text style={styles.profileEyebrow}>ATHLETE PROFILE</Text>
-            <Text style={styles.profileTitle}>身体参数</Text>
+        <Card style={styles.profileCard}>
+          <View style={styles.profileHeader}>
+            <View style={styles.profileIcon}>
+              <Ionicons name="person-outline" size={20} color="#FFFFFF" />
+            </View>
+            <Text style={styles.profileTitle}>身体</Text>
           </View>
           <View style={styles.profileStats}>
-            <ProfileStat label="年龄" value={`${profile.age}`} />
-            <ProfileStat label="身高" value={`${profile.heightCm}`} />
-            <ProfileStat label="体重" value={`${profile.weightKg}`} />
+            <ProfileStat label="岁" value={`${profile.age}`} />
+            <ProfileStat label="cm" value={`${profile.heightCm}`} />
+            <ProfileStat label="kg" value={`${profile.weightKg}`} />
             <ProfileStat
               label="目标"
               value={profile.goal === 'cut' ? '减脂' : profile.goal === 'gain' ? '增肌' : '维持'}
             />
           </View>
-          <Text style={styles.profileNote}>仅用于本机计算，不会上传到模型服务。</Text>
-        </View>
+        </Card>
       ) : null}
 
       <View style={styles.privacySection}>
-        <View style={styles.sectionTitleGroup}>
-          <Text style={[styles.sectionNumber, styles.sectionNumberMuted]}>03</Text>
-          <View>
-            <Text style={styles.sectionEyebrow}>DATA CONTROL</Text>
-            <Text style={styles.sectionTitle}>数据与隐私</Text>
-          </View>
+        <Text style={styles.privacyTitle}>数据与隐私</Text>
+        <View style={styles.privacyGrid}>
+          <PrivacyTile
+            icon="phone-portrait-outline"
+            label="本机保存"
+            accessibilityLabel="饮食记录、身体信息和缩略图保存在本机"
+          />
+          <PrivacyTile
+            icon="image-outline"
+            label="仅传照片"
+            accessibilityLabel="只有待识别的压缩照片会发送到配置的模型服务"
+          />
+          <PrivacyTile
+            icon="key-outline"
+            label="密钥加密"
+            accessibilityLabel="API Key 保存在系统安全存储中"
+          />
         </View>
-        <InfoRow icon="phone-portrait-outline" text="饮食记录、身体信息和缩略图保存在本机。" />
-        <InfoRow icon="cloud-upload-outline" text="只有待识别的压缩照片会发送到你配置的模型服务。" />
-        <InfoRow icon="shield-checkmark-outline" text="卸载 App 会删除 SQLite 数据；iOS Keychain 中的密钥可能按系统规则保留。" />
-        <Text style={styles.disclaimer}>
-          本应用提供的食物识别和营养数据仅为估算，不用于医疗诊断、治疗或处方。
-        </Text>
+        <View style={styles.disclaimer}>
+          <Ionicons name="information-circle-outline" size={17} color={theme.colors.warning} />
+          <Text style={styles.disclaimerText}>识别和营养结果仅供日常记录。</Text>
+        </View>
       </View>
     </Screen>
+  );
+}
+
+function SectionSummary({
+  icon,
+  title,
+  value,
+  active = false,
+  expanded,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  value: string;
+  active?: boolean;
+  expanded: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ expanded }}
+      onPress={onPress}
+      style={({ pressed }) => [styles.sectionSummary, pressed && styles.pressed]}
+    >
+      <View style={styles.sectionIcon}>
+        <Ionicons name={icon} size={22} color={theme.colors.primary} />
+      </View>
+      <View style={styles.flex}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <View style={styles.valueRow}>
+          {active ? <View style={styles.activeDot} /> : null}
+          <Text style={[styles.sectionValue, active && styles.sectionValueActive]} numberOfLines={1}>
+            {value}
+          </Text>
+        </View>
+      </View>
+      <Ionicons
+        name={expanded ? 'chevron-up' : 'chevron-down'}
+        size={19}
+        color={theme.colors.textFaint}
+      />
+    </Pressable>
   );
 }
 
@@ -373,13 +439,20 @@ function TargetField({
   );
 }
 
-function InfoRow({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) {
+function TargetMetric({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) {
   return (
-    <View style={styles.infoRow}>
-      <View style={styles.infoIcon}>
-        <Ionicons name={icon} size={18} color={theme.colors.primary} />
-      </View>
-      <Text style={styles.infoText}>{text}</Text>
+    <View style={styles.targetMetric}>
+      <View style={[styles.targetDot, { backgroundColor: color }]} />
+      <Text style={styles.targetMetricLabel}>{label}</Text>
+      <Text style={styles.targetMetricValue}>{Math.round(value)}</Text>
     </View>
   );
 }
@@ -393,6 +466,23 @@ function ProfileStat({ label, value }: { label: string; value: string }) {
   );
 }
 
+function PrivacyTile({
+  icon,
+  label,
+  accessibilityLabel,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  accessibilityLabel: string;
+}) {
+  return (
+    <View accessibilityLabel={accessibilityLabel} style={styles.privacyTile}>
+      <Ionicons name={icon} size={23} color={theme.colors.primary} />
+      <Text style={styles.privacyLabel}>{label}</Text>
+    </View>
+  );
+}
+
 function responseModeLabel(mode: string): string {
   if (mode === 'json_schema') return 'JSON Schema';
   if (mode === 'json_object') return 'JSON Object';
@@ -400,110 +490,82 @@ function responseModeLabel(mode: string): string {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    gap: 5,
-    marginTop: 4,
-  },
-  kicker: {
-    color: theme.colors.primary,
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-  },
   title: {
     color: theme.colors.text,
-    fontSize: 34,
-    lineHeight: 40,
+    fontSize: 32,
     fontWeight: '900',
-    letterSpacing: -1.2,
-  },
-  subtitle: {
-    color: theme.colors.textMuted,
-    fontSize: 14,
-    lineHeight: 21,
+    letterSpacing: -1.1,
+    marginTop: 2,
   },
   sectionCard: {
-    padding: 20,
-    gap: 16,
+    padding: 0,
+    gap: 0,
+    overflow: 'hidden',
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  sectionTitleGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  sectionNumber: {
-    width: 37,
-    height: 37,
-    borderRadius: 9,
-    backgroundColor: theme.colors.primary,
-    color: '#FFFFFF',
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    lineHeight: 37,
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-  },
-  sectionNumberOrange: {
-    backgroundColor: theme.colors.accent,
-  },
-  sectionNumberMuted: {
-    backgroundColor: theme.colors.ink,
-  },
-  sectionEyebrow: {
-    color: theme.colors.textFaint,
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 1.1,
-    marginBottom: 2,
-  },
-  sectionTitle: {
-    color: theme.colors.text,
-    fontSize: 19,
-    fontWeight: '900',
-    letterSpacing: -0.3,
-  },
-  statusWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 2,
-    backgroundColor: theme.colors.accent,
-  },
-  statusDotReady: {
-    backgroundColor: theme.colors.success,
-  },
-  statusText: {
-    color: theme.colors.textMuted,
-    fontSize: 10,
-    fontWeight: '900',
-  },
-  statusReadyText: {
-    color: theme.colors.success,
-  },
-  preset: {
+  sectionSummary: {
+    minHeight: 82,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 13,
-    padding: 15,
+    padding: 16,
+  },
+  sectionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
     backgroundColor: theme.colors.primarySoft,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#C7D2FE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  flex: {
+    flex: 1,
+  },
+  sectionTitle: {
+    color: theme.colors.text,
+    fontSize: 17,
+    fontWeight: '900',
+  },
+  valueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  activeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: theme.colors.success,
+  },
+  sectionValue: {
+    flex: 1,
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  sectionValueActive: {
+    color: theme.colors.success,
+  },
+  sectionBody: {
+    gap: 14,
+    padding: 16,
+    paddingTop: 0,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  preset: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 11,
+    marginTop: 16,
+    backgroundColor: theme.colors.primarySoft,
+    borderRadius: 14,
   },
   presetIcon: {
-    width: 44,
-    height: 44,
+    width: 38,
+    height: 38,
     borderRadius: 12,
     backgroundColor: theme.colors.primary,
     alignItems: 'center',
@@ -511,62 +573,24 @@ const styles = StyleSheet.create({
   },
   presetMark: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-  presetKicker: {
-    color: theme.colors.primary,
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 1,
   },
   presetTitle: {
-    color: theme.colors.text,
-    fontSize: 15,
-    fontWeight: '900',
-    marginTop: 2,
-  },
-  flex: {
     flex: 1,
-  },
-  muted: {
-    color: theme.colors.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  clearKey: {
-    color: theme.colors.danger,
-    textAlign: 'center',
-    fontSize: 12,
-    fontWeight: '800',
-    paddingVertical: 5,
-  },
-  modeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-  },
-  modeLabel: {
-    color: theme.colors.textFaint,
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-  },
-  modeValue: {
     color: theme.colors.text,
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '900',
+  },
+  pressed: {
+    opacity: 0.72,
   },
   feedback: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 9,
     padding: 12,
-    borderRadius: theme.radius.small,
+    borderRadius: 12,
     backgroundColor: theme.colors.primarySoft,
   },
   feedbackSuccess: {
@@ -577,48 +601,114 @@ const styles = StyleSheet.create({
   },
   feedbackText: {
     flex: 1,
-    color: theme.colors.primaryDark,
+    color: theme.colors.text,
     fontSize: 12,
     lineHeight: 18,
     fontWeight: '700',
   },
-  feedbackSuccessText: {
-    color: theme.colors.success,
+  modeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  feedbackErrorText: {
-    color: theme.colors.danger,
-  },
-  reset: {
-    color: theme.colors.primary,
+  modeValue: {
+    color: theme.colors.textMuted,
     fontSize: 12,
     fontWeight: '800',
+  },
+  clearKey: {
+    color: theme.colors.danger,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '800',
+    paddingVertical: 4,
+  },
+  targetSummary: {
+    flexDirection: 'row',
+    gap: 7,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  targetMetric: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: theme.colors.background,
+  },
+  targetDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  targetMetricLabel: {
+    color: theme.colors.textMuted,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  targetMetricValue: {
+    color: theme.colors.text,
+    fontSize: 14,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
   },
   targetGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
+    paddingTop: 16,
   },
   targetField: {
     width: '47%',
     flexGrow: 1,
   },
-  profilePanel: {
+  targetActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  resetButton: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 15,
+    borderRadius: 12,
+    backgroundColor: theme.colors.primarySoft,
+  },
+  resetText: {
+    color: theme.colors.primary,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  saveTargetButton: {
+    flex: 1,
+  },
+  profileCard: {
     backgroundColor: theme.colors.ink,
-    borderRadius: theme.radius.large,
-    padding: 20,
+    borderColor: theme.colors.ink,
     gap: 16,
   },
-  profileEyebrow: {
-    color: '#98A2B3',
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 1.1,
+  profileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  profileIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   profileTitle: {
     color: '#FFFFFF',
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '900',
-    marginTop: 3,
   },
   profileStats: {
     flexDirection: 'row',
@@ -626,55 +716,63 @@ const styles = StyleSheet.create({
   },
   profileStat: {
     flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
     paddingTop: 10,
     borderTopWidth: 3,
     borderTopColor: theme.colors.primary,
   },
   profileStatValue: {
     color: '#FFFFFF',
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '900',
     fontVariant: ['tabular-nums'],
   },
   profileStatLabel: {
     color: '#98A2B3',
-    fontSize: 10,
+    fontSize: 9,
     marginTop: 3,
   },
-  profileNote: {
-    color: '#AEB9CD',
-    fontSize: 11,
-  },
   privacySection: {
-    gap: 13,
-    paddingHorizontal: 2,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 12,
-    paddingVertical: 4,
+    paddingTop: 5,
   },
-  infoIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: theme.colors.primarySoft,
+  privacyTitle: {
+    color: theme.colors.text,
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  privacyGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  privacyTile: {
+    flex: 1,
+    minHeight: 78,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
+    borderRadius: 16,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
-  infoText: {
-    flex: 1,
-    color: theme.colors.text,
-    fontSize: 13,
-    lineHeight: 20,
+  privacyLabel: {
+    color: theme.colors.textMuted,
+    fontSize: 11,
+    fontWeight: '800',
   },
   disclaimer: {
-    color: theme.colors.warning,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    borderRadius: 12,
     backgroundColor: theme.colors.warningSoft,
-    borderRadius: theme.radius.small,
-    padding: 13,
+  },
+  disclaimerText: {
+    color: theme.colors.warning,
     fontSize: 12,
-    lineHeight: 18,
+    fontWeight: '700',
   },
 });

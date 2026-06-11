@@ -14,10 +14,10 @@ export function Card({ style, children, ...props }: PropsWithChildren<ViewProps>
 const styles = StyleSheet.create({
   card: {
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.medium,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    padding: 18,
-    gap: 12,
+    padding: 16,
+    gap: 14,
   },
 });

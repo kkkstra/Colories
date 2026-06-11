@@ -1,3 +1,4 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Redirect, router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -66,17 +67,20 @@ export default function OnboardingScreen() {
   return (
     <Screen>
       <View style={styles.hero}>
-        <Text style={styles.heroGlyph}>燃</Text>
-        <View style={styles.heroMark}>
-          <Text style={styles.heroMarkText}>RK</Text>
+        <View style={styles.heroIcon}>
+          <Ionicons name="flash" size={28} color="#FFFFFF" />
         </View>
-        <Text style={styles.eyebrow}>WELCOME / DAILY FUEL</Text>
-        <Text style={styles.title}>先校准你的{'\n'}营养训练目标</Text>
-        <Text style={styles.subtitle}>身体信息只保存在本机，用来计算每日建议。</Text>
+        <View style={styles.heroBars}>
+          {[18, 30, 42, 55, 68].map((height, index) => (
+            <View key={height} style={[styles.heroBar, { height, opacity: 0.35 + index * 0.14 }]} />
+          ))}
+        </View>
+        <Text style={styles.title}>先设定目标</Text>
+        <Text style={styles.subtitle}>身体数据只保存在本机</Text>
       </View>
 
       <Card style={styles.sectionCard}>
-        <SectionTitle index="01" eyebrow="BODY DATA" title="身体信息" />
+        <SectionTitle icon="body-outline" title="身体" />
         <View style={styles.row}>
           <View style={styles.flex}>
             <FormField
@@ -88,99 +92,92 @@ export default function OnboardingScreen() {
           </View>
           <View style={styles.flex}>
             <FormField
-              label="身高 (cm)"
+              label="身高 cm"
               value={height}
               onChangeText={setHeight}
               keyboardType="decimal-pad"
             />
           </View>
+          <View style={styles.flex}>
+            <FormField
+              label="体重 kg"
+              value={weight}
+              onChangeText={setWeight}
+              keyboardType="decimal-pad"
+            />
+          </View>
         </View>
-        <FormField
-          label="体重 (kg)"
-          value={weight}
-          onChangeText={setWeight}
-          keyboardType="decimal-pad"
-        />
-        <Text style={styles.fieldLabel}>生理性别</Text>
         <ChoiceChips
           value={sex}
           onChange={setSex}
           options={[
-            { label: '男性', value: 'male' },
-            { label: '女性', value: 'female' },
+            { label: '男性', value: 'male', icon: 'male' },
+            { label: '女性', value: 'female', icon: 'female' },
           ]}
         />
       </Card>
 
       <Card style={styles.sectionCard}>
-        <SectionTitle index="02" eyebrow="TRAINING LOAD" title="活动水平" />
+        <SectionTitle icon="walk-outline" title="活动" />
         <ChoiceChips
           value={activityLevel}
           onChange={setActivityLevel}
           options={[
-            { label: '久坐', value: 'sedentary' },
-            { label: '轻度活动', value: 'light' },
-            { label: '每周训练 3–5 次', value: 'moderate' },
-            { label: '高强度训练', value: 'active' },
-            { label: '运动员级别', value: 'very_active' },
+            { label: '久坐', value: 'sedentary', icon: 'desktop-outline' },
+            { label: '轻度', value: 'light', icon: 'walk-outline' },
+            { label: '常规', value: 'moderate', icon: 'barbell-outline' },
+            { label: '高强度', value: 'active', icon: 'flame-outline' },
+            { label: '运动员', value: 'very_active', icon: 'trophy-outline' },
           ]}
         />
       </Card>
 
       <Card style={styles.sectionCard}>
-        <SectionTitle index="03" eyebrow="GOAL MODE" title="当前目标" />
+        <SectionTitle icon="flag-outline" title="目标" />
         <ChoiceChips
           value={goal}
           onChange={setGoal}
           options={[
-            { label: '减脂', value: 'cut' },
-            { label: '维持', value: 'maintain' },
-            { label: '增肌', value: 'gain' },
+            { label: '减脂', value: 'cut', icon: 'trending-down' },
+            { label: '维持', value: 'maintain', icon: 'remove' },
+            { label: '增肌', value: 'gain', icon: 'trending-up' },
           ]}
         />
-        <View style={styles.targetHeader}>
-          <Text style={styles.targetHeaderLabel}>CALCULATED TARGETS</Text>
-          <Text style={styles.targetHeaderHint}>可稍后在设置中调整</Text>
-        </View>
         <View style={styles.targetGrid}>
-          <Target label="热量" value={`${targets.calories} kcal`} />
-          <Target label="蛋白质" value={`${targets.protein} g`} />
-          <Target label="碳水" value={`${targets.carbs} g`} />
-          <Target label="脂肪" value={`${targets.fat} g`} />
+          <Target label="热" value={targets.calories} color={theme.colors.primary} />
+          <Target label="蛋" value={targets.protein} color={theme.colors.protein} />
+          <Target label="碳" value={targets.carbs} color={theme.colors.carbs} />
+          <Target label="脂" value={targets.fat} color={theme.colors.fat} />
         </View>
-        <Text style={styles.disclaimer}>
-          基于 Mifflin-St Jeor 公式估算。结果仅供日常饮食记录，不用于医疗决策。
-        </Text>
+        <Text style={styles.disclaimer}>目标为日常估算值，可稍后调整。</Text>
       </Card>
 
-      <AppButton label="保存目标，开始记录" icon="arrow-forward" onPress={handleSave} loading={saving} />
+      <AppButton label="开始记录" icon="arrow-forward" onPress={handleSave} loading={saving} />
     </Screen>
   );
 }
 
 function SectionTitle({
-  index,
-  eyebrow,
+  icon,
   title,
 }: {
-  index: string;
-  eyebrow: string;
+  icon: keyof typeof Ionicons.glyphMap;
   title: string;
 }) {
   return (
     <View style={styles.sectionHeading}>
-      <Text style={styles.sectionIndex}>{index}</Text>
-      <View>
-        <Text style={styles.sectionEyebrow}>{eyebrow}</Text>
-        <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.sectionIcon}>
+        <Ionicons name={icon} size={20} color={theme.colors.primary} />
       </View>
+      <Text style={styles.sectionTitle}>{title}</Text>
     </View>
   );
 }
 
-function Target({ label, value }: { label: string; value: string }) {
+function Target({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <View style={styles.target}>
+      <View style={[styles.targetDot, { backgroundColor: color }]} />
       <Text style={styles.targetLabel}>{label}</Text>
       <Text style={styles.targetValue}>{value}</Text>
     </View>
@@ -189,151 +186,110 @@ function Target({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   hero: {
-    minHeight: 278,
-    gap: 8,
-    padding: 24,
+    minHeight: 226,
+    padding: 22,
     borderRadius: theme.radius.large,
     backgroundColor: theme.colors.ink,
     overflow: 'hidden',
     justifyContent: 'flex-end',
+    gap: 6,
   },
-  heroGlyph: {
-    position: 'absolute',
-    right: -20,
-    top: -42,
-    color: '#24304A',
-    fontSize: 190,
-    lineHeight: 220,
-    fontWeight: '900',
-  },
-  heroMark: {
+  heroIcon: {
     position: 'absolute',
     top: 20,
     left: 22,
-    width: 42,
-    height: 42,
-    borderRadius: 10,
-    backgroundColor: theme.colors.accent,
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    transform: [{ rotate: '-5deg' }],
   },
-  heroMarkText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 0.7,
+  heroBars: {
+    position: 'absolute',
+    right: 20,
+    top: 26,
+    height: 78,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 7,
   },
-  eyebrow: {
-    color: '#AEBBFF',
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 1.4,
+  heroBar: {
+    width: 12,
+    borderRadius: 6,
+    backgroundColor: theme.colors.accent,
   },
   title: {
     color: '#FFFFFF',
     fontSize: 34,
-    lineHeight: 42,
+    lineHeight: 40,
     fontWeight: '900',
     letterSpacing: -1,
   },
   subtitle: {
     color: '#AEB9CD',
     fontSize: 13,
-    lineHeight: 20,
   },
   sectionCard: {
-    padding: 20,
-    gap: 16,
+    gap: 15,
   },
   sectionHeading: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
-  sectionIndex: {
-    width: 36,
-    height: 36,
-    borderRadius: 9,
-    backgroundColor: theme.colors.primary,
-    color: '#FFFFFF',
-    textAlign: 'center',
-    lineHeight: 36,
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 0.7,
-  },
-  sectionEyebrow: {
-    color: theme.colors.textFaint,
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 1,
+  sectionIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    backgroundColor: theme.colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sectionTitle: {
     color: theme.colors.text,
     fontSize: 19,
     fontWeight: '900',
-    marginTop: 2,
-  },
-  fieldLabel: {
-    color: theme.colors.textMuted,
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-    marginTop: 4,
   },
   row: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
   },
   flex: {
     flex: 1,
   },
   targetGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  targetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 5,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-  },
-  targetHeaderLabel: {
-    color: theme.colors.primary,
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
-  targetHeaderHint: {
-    color: theme.colors.textFaint,
-    fontSize: 9,
-    fontWeight: '700',
+    gap: 7,
   },
   target: {
-    width: '47%',
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 10,
+    borderRadius: 12,
     backgroundColor: theme.colors.background,
-    borderRadius: 9,
-    padding: 13,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+  },
+  targetDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
   },
   targetLabel: {
     color: theme.colors.textMuted,
-    fontSize: 12,
+    fontSize: 10,
+    fontWeight: '800',
   },
   targetValue: {
     color: theme.colors.text,
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: '900',
-    marginTop: 3,
+    fontVariant: ['tabular-nums'],
   },
   disclaimer: {
-    color: theme.colors.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
+    color: theme.colors.textFaint,
+    fontSize: 11,
+    textAlign: 'center',
   },
 });

@@ -4,10 +4,9 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { AppButton } from '@/components/ui/AppButton';
 import { Card } from '@/components/ui/Card';
 import { EnergyRail } from '@/components/ui/EnergyRail';
-import { ProgressBar } from '@/components/ui/ProgressBar';
+import { MacroStrip } from '@/components/ui/MacroStrip';
 import { Screen } from '@/components/ui/Screen';
 import { theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
@@ -20,6 +19,13 @@ const MEAL_LABELS: Record<MealType, string> = {
   lunch: '午餐',
   dinner: '晚餐',
   snack: '加餐',
+};
+
+const MEAL_ICONS: Record<MealType, keyof typeof Ionicons.glyphMap> = {
+  breakfast: 'sunny-outline',
+  lunch: 'restaurant-outline',
+  dinner: 'moon-outline',
+  snack: 'cafe-outline',
 };
 
 export default function TodayScreen() {
@@ -59,57 +65,64 @@ export default function TodayScreen() {
   }
 
   const remaining = Math.round(targets.calories - totals.calories);
+  const progress = targets.calories > 0 ? totals.calories / targets.calories : 0;
   const goalState =
-    remaining < 0 ? '今日已超出目标' : remaining < targets.calories * 0.18 ? '接近今日目标' : '今日节奏正常';
+    remaining < 0 ? '已超出目标' : remaining < targets.calories * 0.18 ? '接近目标' : '节奏正常';
+
   return (
-    <Screen refreshControl={undefined}>
+    <Screen>
       <View style={styles.header}>
-        <View>
-          <Text style={styles.brand}>燃卡 / DAILY FUEL</Text>
+        <View style={styles.headerCopy}>
           <Text style={styles.title}>{formatChineseDate(dateKey)}</Text>
+          <View style={styles.statusRow}>
+            <View style={[styles.statusDot, remaining < 0 && styles.statusDotOver]} />
+            <Text style={styles.statusText}>{refreshing ? '同步中' : goalState}</Text>
+          </View>
         </View>
-        <View style={styles.headerStatus}>
-          <View style={[styles.statusDot, remaining < 0 && styles.statusDotOver]} />
-          <Text style={styles.headerStatusText}>{refreshing ? '同步中' : goalState}</Text>
-        </View>
+        <Pressable
+          accessibilityLabel="记录一餐"
+          accessibilityRole="button"
+          onPress={() => router.push('/(tabs)/record')}
+          style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}
+        >
+          <Ionicons name="add" size={25} color="#FFFFFF" />
+        </Pressable>
       </View>
 
       <View style={styles.dashboard}>
-        <View style={styles.heroTop}>
+        <View style={styles.hero}>
           <View>
-            <Text style={styles.calorieLabel}>{remaining < 0 ? '超出目标' : '还可摄入'}</Text>
-            <Text style={[styles.calorieValue, remaining < 0 && styles.over]}>
-              {Math.abs(remaining)}
-            </Text>
-            <Text style={styles.calorieUnit}>KCAL</Text>
+            <Text style={styles.calorieLabel}>{remaining < 0 ? '超出' : '剩余'}</Text>
+            <View style={styles.calorieRow}>
+              <Text style={[styles.calorieValue, remaining < 0 && styles.over]}>
+                {Math.abs(remaining)}
+              </Text>
+              <Text style={styles.calorieUnit}>kcal</Text>
+            </View>
           </View>
-          <View style={styles.goalStamp}>
-            <Text style={styles.goalStampLabel}>DAILY{'\n'}TARGET</Text>
-            <Text style={styles.goalStampValue}>{targets.calories}</Text>
-          </View>
+          <FuelGauge progress={progress} over={remaining < 0} />
         </View>
+
         <EnergyRail value={totals.calories} target={targets.calories} />
 
-        <View style={styles.macroDivider} />
-        <View style={styles.macroHeader}>
-          <Text style={styles.panelEyebrow}>MACRO SPLIT</Text>
-          <Text style={styles.panelHint}>已摄入 / 每日目标</Text>
-        </View>
-        <View style={styles.macroStack}>
-          <ProgressBar
-            label="蛋白质"
+        <View style={styles.macroGrid}>
+          <MacroTile
+            label="蛋"
+            accessibilityName="蛋白质"
             value={totals.protein}
             target={targets.protein}
             color={theme.colors.protein}
           />
-          <ProgressBar
-            label="碳水"
+          <MacroTile
+            label="碳"
+            accessibilityName="碳水"
             value={totals.carbs}
             target={targets.carbs}
             color={theme.colors.carbs}
           />
-          <ProgressBar
-            label="脂肪"
+          <MacroTile
+            label="脂"
+            accessibilityName="脂肪"
             value={totals.fat}
             target={targets.fat}
             color={theme.colors.fat}
@@ -118,53 +131,52 @@ export default function TodayScreen() {
       </View>
 
       <View style={styles.sectionHeader}>
-        <View>
-          <Text style={styles.sectionIndex}>MEALS / {String(meals.length).padStart(2, '0')}</Text>
-          <Text style={styles.sectionTitle}>今日进食记录</Text>
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>今日餐食</Text>
+          <Text style={styles.mealCount}>{meals.length}</Text>
         </View>
-        <Pressable onPress={() => router.push('/(tabs)/record')} style={styles.addLink}>
-          <Text style={styles.addLinkText}>添加一餐</Text>
-          <Ionicons name="arrow-forward" size={17} color={theme.colors.primary} />
+        <Pressable
+          accessibilityLabel="添加餐食"
+          accessibilityRole="button"
+          onPress={() => router.push('/(tabs)/record')}
+          style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
+        >
+          <Ionicons name="add" size={20} color={theme.colors.primary} />
         </Pressable>
       </View>
 
       {meals.length === 0 ? (
-        <View style={styles.empty}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push('/(tabs)/record')}
+          style={({ pressed }) => [styles.empty, pressed && styles.pressed]}
+        >
           <View style={styles.emptyIcon}>
-            <Ionicons name="camera-outline" size={25} color={theme.colors.primary} />
+            <Ionicons name="camera" size={29} color={theme.colors.primary} />
           </View>
-          <View style={styles.emptyCopy}>
-            <Text style={styles.emptyTitle}>今天的第一餐还没入场</Text>
-            <Text style={styles.emptyText}>拍照识别，确认份量后再保存。</Text>
-          </View>
-          <AppButton
-            label="记录第一餐"
-            icon="add"
-            onPress={() => router.push('/(tabs)/record')}
-            style={styles.emptyButton}
-          />
-        </View>
+          <Text style={styles.emptyTitle}>拍下今天的第一餐</Text>
+          <Ionicons name="arrow-forward" size={20} color={theme.colors.primary} />
+        </Pressable>
       ) : (
-        meals.map((meal, index) => (
+        meals.map((meal) => (
           <Pressable
             key={meal.id}
             onPress={() => router.push({ pathname: '/edit-meal', params: { id: String(meal.id) } })}
+            style={({ pressed }) => pressed && styles.pressed}
           >
             <Card style={styles.mealCard}>
-              <View style={styles.mealIndex}>
-                <Text style={styles.mealIndexText}>{String(index + 1).padStart(2, '0')}</Text>
-                <View style={styles.mealLine} />
+              <View style={styles.mealIcon}>
+                <Ionicons name={MEAL_ICONS[meal.mealType]} size={21} color={theme.colors.primary} />
               </View>
               <View style={styles.mealBody}>
                 <View style={styles.mealTop}>
-                  <View>
-                    <Text style={styles.mealTime}>
+                  <View style={styles.mealCopy}>
+                    <Text style={styles.mealMeta}>
+                      {MEAL_LABELS[meal.mealType]} ·{' '}
                       {new Date(meal.eatenAt).toLocaleTimeString('zh-CN', {
                         hour: '2-digit',
                         minute: '2-digit',
                       })}
-                      {'  '}
-                      {MEAL_LABELS[meal.mealType]}
                     </Text>
                     <Text style={styles.mealTitle} numberOfLines={1}>
                       {meal.items.map((item) => item.name).join('、')}
@@ -172,36 +184,82 @@ export default function TodayScreen() {
                   </View>
                   <View style={styles.mealCaloriesGroup}>
                     <Text style={styles.mealCalories}>{Math.round(meal.totals.calories)}</Text>
-                    <Text style={styles.mealCaloriesUnit}>KCAL</Text>
+                    <Text style={styles.mealCaloriesUnit}>kcal</Text>
                   </View>
                 </View>
-                <View style={styles.mealMacroRow}>
-                  <MacroTag label="P" value={meal.totals.protein} color={theme.colors.protein} />
-                  <MacroTag label="C" value={meal.totals.carbs} color={theme.colors.carbs} />
-                  <MacroTag label="F" value={meal.totals.fat} color={theme.colors.fat} />
-                  <Ionicons name="chevron-forward" size={17} color={theme.colors.textFaint} />
-                </View>
+                <MacroStrip
+                  protein={meal.totals.protein}
+                  carbs={meal.totals.carbs}
+                  fat={meal.totals.fat}
+                />
               </View>
+              <Ionicons name="chevron-forward" size={17} color={theme.colors.textFaint} />
             </Card>
           </Pressable>
         ))
       )}
-
-      <View style={styles.disclaimerRow}>
-        <Ionicons name="information-circle-outline" size={15} color={theme.colors.textFaint} />
-        <Text style={styles.disclaimer}>营养结果为估算值，不用于医疗诊断或治疗决策。</Text>
-      </View>
     </Screen>
   );
 }
 
-function MacroTag({ label, value, color }: { label: string; value: number; color: string }) {
+function FuelGauge({ progress, over }: { progress: number; over: boolean }) {
+  const activeSegments = Math.min(8, Math.max(0, Math.ceil(progress * 8)));
+
   return (
-    <View style={styles.macroTag}>
-      <View style={[styles.macroTagDot, { backgroundColor: color }]} />
-      <Text style={styles.macroTagText}>
-        {label} {Math.round(value)}g
-      </Text>
+    <View
+      accessibilityLabel={`今日热量进度 ${Math.round(progress * 100)}%`}
+      style={[styles.gauge, over && styles.gaugeOver]}
+    >
+      <Ionicons
+        name={over ? 'warning' : 'flash'}
+        size={19}
+        color={over ? theme.colors.accent : theme.colors.primary}
+      />
+      <View style={styles.gaugeSegments}>
+        {Array.from({ length: 8 }, (_, index) => (
+          <View
+            key={index}
+            style={[
+              styles.gaugeSegment,
+              index < activeSegments && {
+                backgroundColor: over ? theme.colors.accent : theme.colors.primary,
+              },
+            ]}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function MacroTile({
+  label,
+  accessibilityName,
+  value,
+  target,
+  color,
+}: {
+  label: string;
+  accessibilityName: string;
+  value: number;
+  target: number;
+  color: string;
+}) {
+  const progress = target > 0 ? Math.min(1, value / target) : 0;
+
+  return (
+    <View
+      accessibilityLabel={`${accessibilityName} ${Math.round(value)} 克，目标 ${Math.round(target)} 克`}
+      style={styles.macroTile}
+    >
+      <View style={styles.macroTileHeader}>
+        <View style={[styles.macroDot, { backgroundColor: color }]} />
+        <Text style={styles.macroLabel}>{label}</Text>
+      </View>
+      <Text style={styles.macroValue}>{Math.round(value)}</Text>
+      <View style={styles.macroTrack}>
+        <View style={[styles.macroFill, { backgroundColor: color, width: `${progress * 100}%` }]} />
+      </View>
     </View>
   );
 }
@@ -213,125 +271,168 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 4,
+    marginTop: 2,
   },
-  brand: {
-    color: theme.colors.primary,
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 1.2,
+  headerCopy: {
+    gap: 5,
   },
   title: {
     color: theme.colors.text,
-    fontSize: 30,
+    fontSize: 32,
     fontWeight: '900',
-    letterSpacing: -1,
-    marginTop: 5,
+    letterSpacing: -1.1,
   },
-  headerStatus: {
+  statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
-    paddingBottom: 5,
   },
   statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 2,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
     backgroundColor: theme.colors.success,
   },
   statusDotOver: {
     backgroundColor: theme.colors.accent,
   },
-  headerStatusText: {
+  statusText: {
     color: theme.colors.textMuted,
-    fontSize: 11,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  headerAction: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: {
+    opacity: 0.72,
   },
   dashboard: {
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: theme.colors.borderStrong,
+    borderColor: theme.colors.border,
     borderRadius: theme.radius.large,
-    padding: 22,
-    gap: 17,
+    padding: 20,
+    gap: 18,
   },
-  heroTop: {
+  hero: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 18,
   },
   calorieLabel: {
     color: theme.colors.textMuted,
     fontSize: 13,
     fontWeight: '800',
   },
+  calorieRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+  },
   calorieValue: {
     color: theme.colors.ink,
-    fontSize: 58,
-    lineHeight: 64,
+    fontSize: 62,
+    lineHeight: 68,
     fontWeight: '900',
-    letterSpacing: -3,
+    letterSpacing: -3.2,
     fontVariant: ['tabular-nums'],
   },
   calorieUnit: {
     color: theme.colors.textFaint,
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 1.8,
+    fontSize: 12,
+    fontWeight: '800',
+    paddingBottom: 11,
   },
   over: {
     color: theme.colors.accent,
   },
-  goalStamp: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    borderWidth: 8,
-    borderColor: theme.colors.primarySoft,
+  gauge: {
+    width: 84,
+    height: 96,
+    borderRadius: 24,
+    backgroundColor: theme.colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
-    transform: [{ rotate: '4deg' }],
+    gap: 9,
   },
-  goalStampLabel: {
-    color: theme.colors.primary,
-    fontSize: 8,
-    lineHeight: 9,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-    textAlign: 'center',
+  gaugeOver: {
+    backgroundColor: theme.colors.accentSoft,
   },
-  goalStampValue: {
-    color: theme.colors.ink,
-    fontSize: 17,
-    lineHeight: 20,
+  gaugeSegments: {
+    width: 48,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  gaugeSegment: {
+    width: 9,
+    height: 9,
+    borderRadius: 3,
+    backgroundColor: '#D3DAE5',
+  },
+  macroGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  macroTile: {
+    flex: 1,
+    minWidth: 0,
+    padding: 12,
+    borderRadius: 13,
+    backgroundColor: theme.colors.background,
+    gap: 7,
+  },
+  macroTileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  macroDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  macroLabel: {
+    color: theme.colors.textMuted,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  macroValue: {
+    color: theme.colors.text,
+    fontSize: 21,
+    lineHeight: 23,
     fontWeight: '900',
     fontVariant: ['tabular-nums'],
   },
-  macroDivider: {
-    height: 1,
-    backgroundColor: theme.colors.border,
+  macroTrack: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: theme.colors.surfaceMuted,
+    overflow: 'hidden',
   },
-  macroHeader: {
+  macroFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingTop: 6,
   },
-  panelEyebrow: {
-    color: theme.colors.text,
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
-  panelHint: {
-    color: theme.colors.textFaint,
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  macroStack: {
-    gap: 14,
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
   },
   sectionTitle: {
     color: theme.colors.text,
@@ -339,155 +440,102 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: -0.4,
   },
-  sectionIndex: {
-    color: theme.colors.primary,
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 1.1,
-    marginBottom: 3,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  addLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    paddingVertical: 8,
-  },
-  addLinkText: {
-    color: theme.colors.primary,
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  empty: {
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: theme.colors.borderStrong,
-    borderRadius: theme.radius.medium,
-    padding: 20,
-    gap: 14,
-  },
-  emptyIcon: {
-    width: 48,
-    height: 48,
+  mealCount: {
+    minWidth: 24,
+    height: 24,
     borderRadius: 12,
+    backgroundColor: theme.colors.surfaceMuted,
+    color: theme.colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 24,
+    fontSize: 11,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+  addButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: theme.colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyCopy: {
-    gap: 4,
+  empty: {
+    minHeight: 108,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 17,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: theme.colors.borderStrong,
+    borderRadius: 18,
+  },
+  emptyIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: theme.colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyTitle: {
+    flex: 1,
     color: theme.colors.text,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '900',
-  },
-  emptyText: {
-    color: theme.colors.textMuted,
-    lineHeight: 21,
-  },
-  emptyButton: {
-    alignSelf: 'flex-start',
-    minWidth: 150,
   },
   mealCard: {
     flexDirection: 'row',
-    gap: 14,
-    padding: 0,
-    overflow: 'hidden',
-  },
-  mealIndex: {
-    width: 48,
-    backgroundColor: theme.colors.ink,
     alignItems: 'center',
-    paddingTop: 18,
+    gap: 12,
+    padding: 14,
   },
-  mealIndexText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
-  mealLine: {
-    width: 1,
-    flex: 1,
-    marginTop: 10,
-    backgroundColor: '#344054',
+  mealIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: theme.colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   mealBody: {
     flex: 1,
-    paddingVertical: 16,
-    paddingRight: 16,
-    gap: 12,
+    gap: 10,
   },
   mealTop: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
   },
+  mealCopy: {
+    flex: 1,
+    gap: 3,
+  },
+  mealMeta: {
+    color: theme.colors.textMuted,
+    fontSize: 11,
+    fontWeight: '800',
+  },
   mealTitle: {
     color: theme.colors.text,
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '900',
-    marginTop: 4,
-  },
-  mealTime: {
-    color: theme.colors.primary,
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 0.6,
   },
   mealCaloriesGroup: {
     alignItems: 'flex-end',
   },
   mealCalories: {
     color: theme.colors.text,
-    fontSize: 23,
-    lineHeight: 25,
+    fontSize: 20,
+    lineHeight: 22,
     fontWeight: '900',
     fontVariant: ['tabular-nums'],
   },
   mealCaloriesUnit: {
     color: theme.colors.textFaint,
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
-  mealMacroRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  macroTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  macroTagDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 2,
-  },
-  macroTagText: {
-    color: theme.colors.textMuted,
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-  },
-  disclaimerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-  },
-  disclaimer: {
-    color: theme.colors.textFaint,
-    fontSize: 11,
-    textAlign: 'center',
   },
 });

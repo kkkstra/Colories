@@ -14,11 +14,10 @@ export function EnergyRail({ value, target }: Props) {
   const over = value > target;
 
   return (
-    <View style={styles.wrapper}>
-      <View style={styles.labels}>
-        <Text style={styles.label}>0</Text>
-        <Text style={styles.targetLabel}>目标 {Math.round(target)}</Text>
-      </View>
+    <View
+      accessibilityLabel={`已摄入 ${Math.round(value)} 千卡，目标 ${Math.round(target)} 千卡`}
+      style={styles.wrapper}
+    >
       <View style={styles.rail}>
         <View
           style={[
@@ -42,9 +41,9 @@ export function EnergyRail({ value, target }: Props) {
         />
       </View>
       <View style={styles.captionRow}>
-        <Text style={styles.caption}>已摄入 {Math.round(value)} kcal</Text>
+        <Text style={styles.caption}>{Math.round(value)} 已用</Text>
         <Text style={[styles.caption, over && styles.overText]}>
-          {over ? `超出 ${Math.round(value - target)}` : `${Math.round(target - value)} 可用`}
+          {over ? `+${Math.round(value - target)} 超出` : `${Math.round(target)} 目标`}
         </Text>
       </View>
     </View>
@@ -53,32 +52,17 @@ export function EnergyRail({ value, target }: Props) {
 
 const styles = StyleSheet.create({
   wrapper: {
-    gap: 7,
-  },
-  labels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  label: {
-    color: theme.colors.textFaint,
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  targetLabel: {
-    color: theme.colors.textMuted,
-    fontSize: 10,
-    fontWeight: '800',
+    gap: 8,
   },
   rail: {
-    height: 20,
-    borderRadius: 4,
+    height: 14,
+    borderRadius: 7,
     overflow: 'visible',
     backgroundColor: theme.colors.surfaceMuted,
   },
   fill: {
     height: '100%',
-    borderRadius: 4,
+    borderRadius: 7,
   },
   warningZone: {
     position: 'absolute',
@@ -90,16 +74,16 @@ const styles = StyleSheet.create({
   },
   tick: {
     position: 'absolute',
-    top: 5,
-    bottom: 5,
+    top: 4,
+    bottom: 4,
     width: 1,
     backgroundColor: 'rgba(255,255,255,0.7)',
   },
   marker: {
     position: 'absolute',
-    top: -4,
-    width: 3,
-    height: 28,
+    top: -3,
+    width: 2,
+    height: 20,
     borderRadius: 2,
     backgroundColor: theme.colors.ink,
   },
@@ -112,8 +96,9 @@ const styles = StyleSheet.create({
   },
   caption: {
     color: theme.colors.textMuted,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
   overText: {
     color: theme.colors.danger,

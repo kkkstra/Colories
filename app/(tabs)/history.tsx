@@ -6,6 +6,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
 import { EnergyRail } from '@/components/ui/EnergyRail';
+import { MacroStrip } from '@/components/ui/MacroStrip';
 import { Screen } from '@/components/ui/Screen';
 import { theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
@@ -18,6 +19,13 @@ const MEAL_LABELS: Record<MealType, string> = {
   lunch: '午餐',
   dinner: '晚餐',
   snack: '加餐',
+};
+
+const MEAL_ICONS: Record<MealType, keyof typeof Ionicons.glyphMap> = {
+  breakfast: 'sunny-outline',
+  lunch: 'restaurant-outline',
+  dinner: 'moon-outline',
+  snack: 'cafe-outline',
 };
 
 export default function HistoryScreen() {
@@ -50,9 +58,11 @@ export default function HistoryScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <Text style={styles.kicker}>14 DAY / CYCLE</Text>
-        <Text style={styles.title}>饮食训练日志</Text>
-        <Text style={styles.subtitle}>按天回看摄入趋势，点开任意一餐即可修正。</Text>
+        <Text style={styles.title}>历史</Text>
+        <View style={styles.period}>
+          <Ionicons name="pulse" size={16} color={theme.colors.primary} />
+          <Text style={styles.periodText}>14 天</Text>
+        </View>
       </View>
 
       <ScrollView
@@ -60,7 +70,7 @@ export default function HistoryScreen() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.dateRail}
       >
-        {dates.map((dateKey, index) => {
+        {dates.map((dateKey) => {
           const selected = dateKey === selectedDate;
           const date = new Date(`${dateKey}T12:00:00`);
           const dayCalories = summaries[dateKey]?.calories ?? 0;
@@ -69,12 +79,10 @@ export default function HistoryScreen() {
           return (
             <Pressable
               key={dateKey}
+              accessibilityState={{ selected }}
               onPress={() => setSelectedDate(dateKey)}
               style={[styles.dateCard, selected && styles.dateCardSelected]}
             >
-              <Text style={[styles.railIndex, selected && styles.selectedMuted]}>
-                {String(dates.length - index).padStart(2, '0')}
-              </Text>
               <Text style={[styles.weekday, selected && styles.selectedMuted]}>
                 {date.toLocaleDateString('zh-CN', { weekday: 'short' })}
               </Text>
@@ -84,7 +92,7 @@ export default function HistoryScreen() {
                   style={[
                     styles.miniFill,
                     {
-                      height: `${progress * 100}%`,
+                      width: `${progress * 100}%`,
                       backgroundColor:
                         dayCalories > dayTarget ? theme.colors.accent : theme.colors.primary,
                     },
@@ -98,15 +106,12 @@ export default function HistoryScreen() {
 
       <View style={styles.summary}>
         <View style={styles.summaryTop}>
-          <View>
-            <Text style={styles.summaryKicker}>SELECTED DAY</Text>
-            <Text style={styles.summaryDate}>{formatChineseDate(selectedDate)}</Text>
-          </View>
+          <Text style={styles.summaryDate}>{formatChineseDate(selectedDate)}</Text>
           <View style={styles.summaryRight}>
             <Text style={styles.summaryCalories}>
               {Math.round(selectedSummary?.calories ?? 0)}
             </Text>
-            <Text style={styles.summaryUnit}>KCAL / {meals.length} 餐</Text>
+            <Text style={styles.summaryUnit}>kcal</Text>
           </View>
         </View>
         <EnergyRail
@@ -114,44 +119,58 @@ export default function HistoryScreen() {
           target={targets?.calories ?? 2000}
         />
         <View style={styles.summaryMacros}>
-          <SummaryMacro label="蛋白质" value={selectedSummary?.protein ?? 0} color={theme.colors.protein} />
-          <SummaryMacro label="碳水" value={selectedSummary?.carbs ?? 0} color={theme.colors.carbs} />
-          <SummaryMacro label="脂肪" value={selectedSummary?.fat ?? 0} color={theme.colors.fat} />
+          <SummaryMacro label="蛋" value={selectedSummary?.protein ?? 0} color={theme.colors.protein} />
+          <SummaryMacro label="碳" value={selectedSummary?.carbs ?? 0} color={theme.colors.carbs} />
+          <SummaryMacro label="脂" value={selectedSummary?.fat ?? 0} color={theme.colors.fat} />
         </View>
+      </View>
+
+      <View style={styles.mealHeader}>
+        <Text style={styles.mealHeaderTitle}>餐食</Text>
+        <Text style={styles.mealCount}>{meals.length}</Text>
       </View>
 
       {meals.length === 0 ? (
         <View style={styles.empty}>
-          <Ionicons name="calendar-clear-outline" size={27} color={theme.colors.primary} />
-          <View>
-            <Text style={styles.emptyTitle}>这一天没有记录</Text>
-            <Text style={styles.muted}>选择其他日期，或去记录今天的餐食。</Text>
+          <View style={styles.emptyIcon}>
+            <Ionicons name="calendar-clear-outline" size={25} color={theme.colors.primary} />
           </View>
+          <Text style={styles.emptyTitle}>这一天没有记录</Text>
         </View>
       ) : (
-        meals.map((meal, index) => (
+        meals.map((meal) => (
           <Pressable
             key={meal.id}
             onPress={() => router.push({ pathname: '/edit-meal', params: { id: String(meal.id) } })}
+            style={({ pressed }) => pressed && styles.pressed}
           >
             <Card style={styles.mealCard}>
-              <View style={styles.mealIndex}>
-                <Text style={styles.mealIndexText}>{String(index + 1).padStart(2, '0')}</Text>
+              <View style={styles.mealIcon}>
+                <Ionicons name={MEAL_ICONS[meal.mealType]} size={20} color={theme.colors.primary} />
               </View>
               <View style={styles.mealBody}>
-                <View style={styles.mealHeader}>
-                  <Text style={styles.mealType}>{MEAL_LABELS[meal.mealType]}</Text>
-                  <Text style={styles.mealCalories}>{Math.round(meal.totals.calories)} kcal</Text>
+                <View style={styles.mealTop}>
+                  <View style={styles.flex}>
+                    <Text style={styles.mealMeta}>
+                      {MEAL_LABELS[meal.mealType]} ·{' '}
+                      {new Date(meal.eatenAt).toLocaleTimeString('zh-CN', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </Text>
+                    <Text style={styles.foods} numberOfLines={1}>
+                      {meal.items.map((item) => item.name).join('、')}
+                    </Text>
+                  </View>
+                  <Text style={styles.mealCalories}>{Math.round(meal.totals.calories)}</Text>
                 </View>
-                <Text style={styles.foods} numberOfLines={2}>
-                  {meal.items.map((item) => item.name).join('、')}
-                </Text>
-                <Text style={styles.muted}>
-                  P {Math.round(meal.totals.protein)}g · C {Math.round(meal.totals.carbs)}g · F{' '}
-                  {Math.round(meal.totals.fat)}g
-                </Text>
+                <MacroStrip
+                  protein={meal.totals.protein}
+                  carbs={meal.totals.carbs}
+                  fat={meal.totals.fat}
+                />
               </View>
-              <Ionicons name="chevron-forward" size={18} color={theme.colors.textFaint} />
+              <Ionicons name="chevron-forward" size={17} color={theme.colors.textFaint} />
             </Card>
           </Pressable>
         ))
@@ -163,71 +182,69 @@ export default function HistoryScreen() {
 function SummaryMacro({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <View style={styles.summaryMacro}>
-      <View style={[styles.summaryMacroLine, { backgroundColor: color }]} />
-      <Text style={styles.summaryMacroValue}>{Math.round(value)}g</Text>
+      <View style={[styles.summaryMacroDot, { backgroundColor: color }]} />
       <Text style={styles.summaryMacroLabel}>{label}</Text>
+      <Text style={styles.summaryMacroValue}>{Math.round(value)}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   header: {
-    gap: 5,
-    marginTop: 4,
-  },
-  kicker: {
-    color: theme.colors.primary,
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 1.2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
   },
   title: {
     color: theme.colors.text,
-    fontSize: 34,
-    lineHeight: 40,
+    fontSize: 32,
     fontWeight: '900',
-    letterSpacing: -1.2,
+    letterSpacing: -1.1,
   },
-  subtitle: {
-    color: theme.colors.textMuted,
-    fontSize: 14,
-    lineHeight: 21,
+  period: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: theme.colors.primarySoft,
+  },
+  periodText: {
+    color: theme.colors.primary,
+    fontSize: 12,
+    fontWeight: '900',
   },
   dateRail: {
     gap: 8,
     paddingVertical: 2,
   },
   dateCard: {
-    width: 60,
-    height: 114,
+    width: 58,
+    height: 88,
     alignItems: 'center',
-    borderRadius: 10,
+    justifyContent: 'center',
+    gap: 4,
+    borderRadius: 18,
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    paddingVertical: 10,
   },
   dateCardSelected: {
     backgroundColor: theme.colors.ink,
     borderColor: theme.colors.ink,
   },
-  railIndex: {
-    color: theme.colors.textFaint,
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-  },
   weekday: {
     color: theme.colors.textMuted,
     fontSize: 10,
     fontWeight: '700',
-    marginTop: 5,
   },
   day: {
     color: theme.colors.text,
     fontSize: 22,
+    lineHeight: 25,
     fontWeight: '900',
-    marginTop: 2,
   },
   selectedText: {
     color: '#FFFFFF',
@@ -236,25 +253,24 @@ const styles = StyleSheet.create({
     color: '#AEB9CD',
   },
   miniRail: {
-    width: 8,
-    height: 32,
-    borderRadius: 2,
+    width: 34,
+    height: 5,
+    borderRadius: 3,
     backgroundColor: theme.colors.surfaceMuted,
-    marginTop: 7,
     overflow: 'hidden',
-    justifyContent: 'flex-end',
   },
   miniRailSelected: {
     backgroundColor: '#344054',
   },
   miniFill: {
-    width: '100%',
-    minHeight: 2,
+    height: '100%',
+    minWidth: 2,
+    borderRadius: 3,
   },
   summary: {
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: theme.colors.borderStrong,
+    borderColor: theme.colors.border,
     borderRadius: theme.radius.large,
     padding: 20,
     gap: 17,
@@ -264,33 +280,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  summaryKicker: {
-    color: theme.colors.primary,
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 1.1,
-  },
   summaryDate: {
     color: theme.colors.text,
     fontSize: 19,
     fontWeight: '900',
-    marginTop: 3,
   },
   summaryRight: {
+    flexDirection: 'row',
     alignItems: 'flex-end',
+    gap: 6,
   },
   summaryCalories: {
     color: theme.colors.text,
-    fontSize: 32,
-    lineHeight: 34,
+    fontSize: 34,
+    lineHeight: 36,
     fontWeight: '900',
     fontVariant: ['tabular-nums'],
   },
   summaryUnit: {
     color: theme.colors.textFaint,
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 0.8,
+    fontSize: 10,
+    fontWeight: '800',
+    paddingBottom: 4,
   },
   summaryMacros: {
     flexDirection: 'row',
@@ -299,41 +310,71 @@ const styles = StyleSheet.create({
   summaryMacro: {
     flex: 1,
     minWidth: 0,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    padding: 11,
+    borderRadius: 12,
+    backgroundColor: theme.colors.background,
   },
-  summaryMacroLine: {
-    width: 24,
-    height: 4,
-    borderRadius: 2,
-    marginBottom: 7,
-  },
-  summaryMacroValue: {
-    color: theme.colors.text,
-    fontSize: 16,
-    fontWeight: '900',
-    fontVariant: ['tabular-nums'],
+  summaryMacroDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
   },
   summaryMacroLabel: {
     color: theme.colors.textMuted,
-    fontSize: 10,
-    marginTop: 2,
+    fontSize: 11,
+    fontWeight: '800',
   },
-  muted: {
+  summaryMacroValue: {
+    flex: 1,
+    color: theme.colors.text,
+    textAlign: 'right',
+    fontSize: 15,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+  mealHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingTop: 5,
+  },
+  mealHeaderTitle: {
+    color: theme.colors.text,
+    fontSize: 21,
+    fontWeight: '900',
+  },
+  mealCount: {
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: theme.colors.surfaceMuted,
     color: theme.colors.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
+    textAlign: 'center',
+    lineHeight: 24,
+    fontSize: 11,
+    fontWeight: '900',
   },
   empty: {
+    minHeight: 104,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    padding: 20,
+    padding: 17,
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: theme.colors.borderStrong,
-    borderRadius: theme.radius.medium,
+    borderRadius: 18,
+  },
+  emptyIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 17,
+    backgroundColor: theme.colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyTitle: {
     color: theme.colors.text,
@@ -343,47 +384,47 @@ const styles = StyleSheet.create({
   mealCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 0,
-    overflow: 'hidden',
-    gap: 0,
+    gap: 12,
+    padding: 14,
   },
-  mealIndex: {
-    alignSelf: 'stretch',
-    width: 44,
+  mealIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
     backgroundColor: theme.colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  mealIndexText: {
-    color: theme.colors.primary,
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 0.7,
-  },
   mealBody: {
     flex: 1,
-    padding: 15,
-    gap: 6,
+    gap: 9,
   },
-  mealHeader: {
+  mealTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 12,
   },
-  mealType: {
-    color: theme.colors.text,
-    fontSize: 13,
-    fontWeight: '900',
+  flex: {
+    flex: 1,
+    gap: 3,
+  },
+  mealMeta: {
+    color: theme.colors.textMuted,
+    fontSize: 11,
+    fontWeight: '800',
   },
   mealCalories: {
-    color: theme.colors.primary,
-    fontSize: 13,
+    color: theme.colors.text,
+    fontSize: 20,
     fontWeight: '900',
+    fontVariant: ['tabular-nums'],
   },
   foods: {
     color: theme.colors.text,
     fontSize: 15,
-    fontWeight: '800',
-    lineHeight: 21,
+    fontWeight: '900',
+  },
+  pressed: {
+    opacity: 0.72,
   },
 });

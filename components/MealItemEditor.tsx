@@ -40,15 +40,15 @@ export function MealItemEditor({ item, onChange, onRemove }: Props) {
             {item.source === 'catalog' ? 'DB' : item.source === 'ai' ? 'AI' : 'ME'}
           </Text>
         </View>
-        <View style={styles.sourceCopy}>
-          <Text style={styles.sourceLabel}>营养来源</Text>
-          <Text style={styles.sourceValue}>{SOURCE_LABELS[item.source]}</Text>
-        </View>
-        {typeof item.confidence === 'number' ? (
-          <View style={styles.confidenceBlock}>
-            <Text style={styles.confidenceValue}>{Math.round(item.confidence * 100)}%</Text>
-            <Text style={styles.confidenceLabel}>置信度</Text>
+        <Text style={styles.sourceValue}>{SOURCE_LABELS[item.source]}</Text>
+        {item.cookingMethod ? (
+          <View style={styles.cookingTag}>
+            <Ionicons name="flame-outline" size={13} color={theme.colors.textMuted} />
+            <Text style={styles.cookingText}>{item.cookingMethod}</Text>
           </View>
+        ) : null}
+        {typeof item.confidence === 'number' ? (
+          <Text style={styles.confidenceValue}>{Math.round(item.confidence * 100)}%</Text>
         ) : null}
       </View>
 
@@ -64,15 +64,6 @@ export function MealItemEditor({ item, onChange, onRemove }: Props) {
             <Ionicons name="trash-outline" size={18} color={theme.colors.danger} />
           </View>
         </Pressable>
-      </View>
-
-      <View style={styles.meta}>
-        {item.cookingMethod ? (
-          <View style={styles.cookingTag}>
-            <Ionicons name="flame-outline" size={13} color={theme.colors.textMuted} />
-            <Text style={styles.cookingText}>{item.cookingMethod}</Text>
-          </View>
-        ) : null}
       </View>
 
       {item.warning ? <Text style={styles.warning}>{item.warning}</Text> : null}
@@ -169,34 +160,16 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0.4,
   },
-  sourceCopy: {
-    flex: 1,
-  },
-  sourceLabel: {
-    color: theme.colors.textFaint,
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-  },
   sourceValue: {
+    flex: 1,
     color: theme.colors.text,
     fontSize: 13,
     fontWeight: '900',
-    marginTop: 2,
-  },
-  confidenceBlock: {
-    alignItems: 'flex-end',
   },
   confidenceValue: {
-    color: theme.colors.text,
-    fontSize: 15,
+    color: theme.colors.textMuted,
+    fontSize: 12,
     fontWeight: '900',
-  },
-  confidenceLabel: {
-    color: theme.colors.textFaint,
-    fontSize: 8,
-    fontWeight: '800',
-    marginTop: 1,
   },
   header: {
     flexDirection: 'row',
@@ -219,13 +192,6 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  meta: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
   },
   cookingTag: {
     flexDirection: 'row',

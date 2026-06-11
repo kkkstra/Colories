@@ -10,18 +10,14 @@ export default function TabLayout() {
         headerShown: false,
         tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: theme.colors.textMuted,
+        tabBarShowLabel: false,
         tabBarStyle: {
-          height: 72,
-          paddingTop: 8,
-          paddingBottom: 10,
+          height: 64,
+          paddingTop: 9,
+          paddingBottom: 8,
           backgroundColor: theme.colors.surface,
           borderTopColor: theme.colors.border,
           borderTopWidth: 1,
-        },
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '800',
-          letterSpacing: 0.3,
         },
         tabBarItemStyle: {
           paddingTop: 2,
@@ -33,8 +29,9 @@ export default function TabLayout() {
         name="index"
         options={{
           title: '今日',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="today-outline" color={color} size={size} />
+          tabBarAccessibilityLabel: '今日',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'today' : 'today-outline'} color={color} size={size} />
           ),
         }}
       />
@@ -42,8 +39,13 @@ export default function TabLayout() {
         name="record"
         options={{
           title: '记录',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="add-circle" color={color} size={size + 5} />
+          tabBarAccessibilityLabel: '记录',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'add-circle' : 'add-circle-outline'}
+              color={color}
+              size={size + 7}
+            />
           ),
         }}
       />
@@ -51,8 +53,9 @@ export default function TabLayout() {
         name="history"
         options={{
           title: '历史',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar-outline" color={color} size={size} />
+          tabBarAccessibilityLabel: '历史',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'calendar' : 'calendar-outline'} color={color} size={size} />
           ),
         }}
       />
@@ -60,8 +63,9 @@ export default function TabLayout() {
         name="settings"
         options={{
           title: '设置',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="settings-outline" color={color} size={size} />
+          tabBarAccessibilityLabel: '设置',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'settings' : 'settings-outline'} color={color} size={size} />
           ),
         }}
       />
