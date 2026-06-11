@@ -1,4 +1,4 @@
-import { Children, isValidElement, type PropsWithChildren, type Ref } from 'react';
+import { Children, isValidElement, type PropsWithChildren, type ReactNode, type Ref } from 'react';
 import {
   Platform,
   ScrollView,
@@ -17,6 +17,7 @@ type Props = PropsWithChildren<
     scroll?: boolean;
     scrollRef?: Ref<ScrollView>;
     topSafe?: boolean;
+    fixedHeader?: ReactNode;
     stickyHeaderKeys?: string[];
   }
 >;
@@ -26,6 +27,7 @@ export function Screen({
   scroll = true,
   scrollRef,
   topSafe = true,
+  fixedHeader,
   stickyHeaderKeys,
   contentContainerStyle,
   ...props
@@ -46,6 +48,7 @@ export function Screen({
   if (!scroll) {
     return (
       <SafeAreaView style={styles.safe} edges={edges}>
+        {fixedHeader}
         <Animated.View
           entering={FadeIn.duration(140).easing(Easing.out(Easing.cubic))}
           layout={LinearTransition.duration(160).easing(Easing.out(Easing.cubic))}
@@ -59,6 +62,7 @@ export function Screen({
   if (stickyChildren) {
     return (
       <SafeAreaView style={styles.safe} edges={edges}>
+        {fixedHeader}
         <ScrollView
           {...props}
           ref={scrollRef}
@@ -78,6 +82,7 @@ export function Screen({
   }
   return (
     <SafeAreaView style={styles.safe} edges={edges}>
+      {fixedHeader}
       <ScrollView
         {...props}
         ref={scrollRef}

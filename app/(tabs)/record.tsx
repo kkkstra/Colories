@@ -1,12 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Redirect, router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Redirect, router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { MealItemEditor } from '@/components/MealItemEditor';
-import { AppButton } from '@/components/ui/AppButton';
 import { HeaderIconButton } from '@/components/ui/AppHeader';
 import { Card } from '@/components/ui/Card';
 import { ChoiceChips } from '@/components/ui/ChoiceChips';
@@ -56,6 +56,7 @@ export default function RecordScreen() {
   const [foodImages, setFoodImages] = useState<PreparedFoodImage[]>([]);
   const [notes, setNotes] = useState('');
   const [processing, setProcessing] = useState<ProcessingState>(null);
+  const [recognitionElapsedSeconds, setRecognitionElapsedSeconds] = useState(0);
   const [saving, setSaving] = useState(false);
   const [catalogSavingId, setCatalogSavingId] = useState<string>();
   const busy = processing !== null;
@@ -76,6 +77,18 @@ export default function RecordScreen() {
     }
     setMealTitle(createMealTitle(items) ?? '');
   }, [items, mealTitle]);
+
+  useEffect(() => {
+    if (processing !== 'recognizing') {
+      setRecognitionElapsedSeconds(0);
+      return;
+    }
+    setRecognitionElapsedSeconds(0);
+    const timer = setInterval(() => {
+      setRecognitionElapsedSeconds((current) => current + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [processing]);
 
   if (!loading && !profile) {
     return <Redirect href="/onboarding" />;
@@ -101,18 +114,18 @@ export default function RecordScreen() {
     const result =
       source === 'camera'
         ? await ImagePicker.launchCameraAsync({
-            mediaTypes: ['images'],
-            quality: 1,
-            cameraType: ImagePicker.CameraType.back,
-          })
+          mediaTypes: ['images'],
+          quality: 1,
+          cameraType: ImagePicker.CameraType.back,
+        })
         : await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            quality: 1,
-            allowsEditing: false,
-            allowsMultipleSelection: true,
-            orderedSelection: true,
-            selectionLimit: remainingSlots,
-          });
+          mediaTypes: ['images'],
+          quality: 1,
+          allowsEditing: false,
+          allowsMultipleSelection: true,
+          orderedSelection: true,
+          selectionLimit: remainingSlots,
+        });
     if (result.canceled || result.assets.length === 0) {
       return;
     }
@@ -141,6 +154,21 @@ export default function RecordScreen() {
         void deleteStoredPhoto(removed.storedUri);
       }
       return current.filter((_, currentIndex) => currentIndex !== index);
+    });
+  };
+
+  const appendRecognitionWarningsToNotes = (warnings: string[]) => {
+    const message = warnings.map((warning) => warning.trim()).filter(Boolean).join('\n');
+    if (!message) {
+      return;
+    }
+    const noteBlock = `AI识别提示：\n${message}`;
+    setNotes((current) => {
+      if (current.includes(noteBlock)) {
+        return current;
+      }
+      const currentText = current.trimEnd();
+      return currentText ? `${currentText}\n\n${noteBlock}` : noteBlock;
     });
   };
 
@@ -175,10 +203,9 @@ export default function RecordScreen() {
       }
       setItems(drafts);
       setMealTitle(recognized.mealTitle ?? createMealTitle(drafts) ?? '');
+      appendRecognitionWarningsToNotes(recognized.warnings);
       if (drafts.length === 0) {
         showAlert('没有识别到食物', '请换一张更清晰的照片，或使用手动录入。');
-      } else if (recognized.warnings.length > 0) {
-        showAlert('识别完成', recognized.warnings.join('\n'));
       }
     } catch (error) {
       const message =
@@ -258,11 +285,11 @@ export default function RecordScreen() {
         current.map((currentItem) =>
           currentItem.id === item.id
             ? {
-                ...currentItem,
-                source: 'catalog',
-                catalogFoodId,
-                recognitionAlternatives: undefined,
-              }
+              ...currentItem,
+              source: 'catalog',
+              catalogFoodId,
+              recognitionAlternatives: undefined,
+            }
             : currentItem,
         ),
       );
@@ -316,8 +343,8 @@ export default function RecordScreen() {
     return uri ? [{ uri, width: image.width, height: image.height }] : [];
   });
 
-  return (
-    <Screen stickyHeaderKeys={items.length > 0 ? ['meal-total-summary'] : undefined}>
+  const fixedHeader = (
+    <View style={styles.fixedHeader}>
       <View style={styles.header}>
         <View style={styles.headerTitleGroup}>
           <View style={styles.titleIcon}>
@@ -325,147 +352,164 @@ export default function RecordScreen() {
           </View>
           <Text style={styles.title}>记录一餐</Text>
         </View>
-        <HeaderIconButton
-          accessibilityLabel="重置当前记录"
-          icon="refresh-outline"
-          onPress={handleReset}
-          disabled={busy || saving}
-        />
+        <View style={styles.headerActions}>
+          <HeaderIconButton
+            accessibilityLabel="重置当前记录"
+            icon="refresh-outline"
+            onPress={handleReset}
+            disabled={busy || saving}
+          />
+          <HeaderIconButton
+            accessibilityLabel="保存当前记录"
+            icon="checkmark"
+            onPress={handleSave}
+            loading={saving}
+            disabled={busy}
+            variant="primary"
+          />
+        </View>
       </View>
+    </View>
+  );
 
-      <ChoiceChips
-        value={mealType}
-        onChange={setMealType}
-        adaptive
-        columns={4}
-        options={[
-          { label: '早餐', value: 'breakfast', icon: 'sunny-outline' },
-          { label: '午餐', value: 'lunch', icon: 'restaurant-outline' },
-          { label: '晚餐', value: 'dinner', icon: 'moon-outline' },
-          { label: '加餐', value: 'snack', icon: 'cafe-outline' },
-        ]}
-      />
+  return (
+    <>
+      <Screen
+        fixedHeader={fixedHeader}
+        stickyHeaderKeys={items.length > 0 ? ['meal-total-summary'] : undefined}
+      >
 
-      <Card variant="base" style={styles.timeCard}>
-        <MealDateTimePicker value={eatenAt} onChange={setEatenAt} />
-      </Card>
-
-      <View style={styles.photoActions}>
-        <PhotoButton
-          icon="camera"
-          label="拍照"
-          onPress={() => chooseImage('camera')}
-          disabled={busy}
-          primary
+        <ChoiceChips
+          value={mealType}
+          onChange={setMealType}
+          adaptive
+          columns={4}
+          options={[
+            { label: '早餐', value: 'breakfast', icon: 'sunny-outline' },
+            { label: '午餐', value: 'lunch', icon: 'restaurant-outline' },
+            { label: '晚餐', value: 'dinner', icon: 'moon-outline' },
+            { label: '加餐', value: 'snack', icon: 'cafe-outline' },
+          ]}
         />
-        <PhotoButton
-          icon="image-outline"
-          label="相册"
-          onPress={() => chooseImage('library')}
-          disabled={busy}
-        />
-      </View>
 
-      {busy ? (
-        <Card variant="prominent" style={styles.processing}>
-          <View style={styles.processingIcon}>
-            <Ionicons
-              name={processing === 'preparing' ? 'image-outline' : 'scan-outline'}
-              size={24}
-              color="#FFFFFF"
+        <Card variant="base" style={styles.timeCard}>
+          <MealDateTimePicker value={eatenAt} onChange={setEatenAt} />
+        </Card>
+
+        <View style={styles.photoActions}>
+          <PhotoButton
+            icon="camera"
+            label="拍照"
+            onPress={() => chooseImage('camera')}
+            disabled={busy}
+            primary
+          />
+          <PhotoButton
+            icon="image-outline"
+            label="相册"
+            onPress={() => chooseImage('library')}
+            disabled={busy}
+          />
+        </View>
+
+        {processing === 'preparing' ? (
+          <Card variant="prominent" style={styles.processing}>
+            <View style={styles.processingIcon}>
+              <Ionicons
+                name="image-outline"
+                size={24}
+                color="#FFFFFF"
+              />
+            </View>
+            <Text style={styles.processingTitle}>正在处理图片</Text>
+          </Card>
+        ) : null}
+
+        <PhotoGallery photos={displayPhotos} onRemovePhoto={handleRemovePhoto} />
+
+        <AIRecognizeButton
+          onPress={handleRecognizeImages}
+          loading={processing === 'recognizing'}
+          disabled={busy || foodImages.length === 0}
+          photoCount={foodImages.length}
+        />
+
+        {items.length > 0 ? (
+          <View style={styles.mealTitleWrap}>
+            <Ionicons name="sparkles-outline" size={19} color={theme.colors.primary} />
+            <TextInput
+              value={mealTitle}
+              onChangeText={setMealTitle}
+              placeholder="AI 会总结这一餐"
+              placeholderTextColor={theme.colors.textFaint}
+              style={styles.mealTitleInput}
             />
           </View>
-          <Text style={styles.processingTitle}>
-            {processing === 'preparing' ? '正在处理图片' : '正在识别食物与份量'}
-          </Text>
-        </Card>
-      ) : null}
+        ) : null}
 
-      <PhotoGallery photos={displayPhotos} onRemovePhoto={handleRemovePhoto} />
-
-      <AIRecognizeButton
-        onPress={handleRecognizeImages}
-        loading={processing === 'recognizing'}
-        disabled={busy || foodImages.length === 0}
-        photoCount={foodImages.length}
-      />
-
-      {items.length > 0 ? (
-        <View style={styles.mealTitleWrap}>
-          <Ionicons name="sparkles-outline" size={19} color={theme.colors.primary} />
-          <TextInput
-            value={mealTitle}
-            onChangeText={setMealTitle}
-            placeholder="AI 会总结这一餐"
-            placeholderTextColor={theme.colors.textFaint}
-            style={styles.mealTitleInput}
-          />
-        </View>
-      ) : null}
-
-      <View style={styles.sectionHeader}>
-        <View style={styles.sectionTitleRow}>
-          <Text style={styles.sectionTitle}>食物</Text>
-          <Text style={styles.itemCount}>{items.length}</Text>
-        </View>
-        <Pressable
-          accessibilityLabel="添加食物"
-          accessibilityRole="button"
-          onPress={() => router.push('/select-food')}
-          style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
-        >
-          <Ionicons name="add" size={20} color={theme.colors.primary} />
-        </Pressable>
-      </View>
-
-      {items.length > 0 ? (
-        <View key="meal-total-summary" style={styles.stickyTotalWrap}>
-          <MealTotalSummary totals={totals} />
-        </View>
-      ) : null}
-
-      {items.length === 0 ? (
-        <View style={styles.empty}>
-          <View style={styles.emptyIcon}>
-            <Ionicons name="scan-outline" size={27} color={theme.colors.primary} />
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionTitleRow}>
+            <Text style={styles.sectionTitle}>食物</Text>
+            <Text style={styles.itemCount}>{items.length}</Text>
           </View>
-          <Text style={styles.emptyTitle}>拍照或添加食物</Text>
+          <Pressable
+            accessibilityLabel="添加食物"
+            accessibilityRole="button"
+            onPress={() => router.push('/select-food')}
+            style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
+          >
+            <Ionicons name="add" size={20} color={theme.colors.primary} />
+          </Pressable>
         </View>
-      ) : (
-        items.map((item, index) => (
-          <MealItemEditor
-            key={item.id}
-            item={item}
-            onChange={(nextItem) => updateItem(index, nextItem)}
-            onAddToCatalog={addItemToCatalog}
-            addingToCatalog={catalogSavingId === item.id}
-            onRemove={() =>
-              setItems((current) => current.filter((currentItem) => currentItem.id !== item.id))
-            }
+
+        {items.length > 0 ? (
+          <View key="meal-total-summary" style={styles.stickyTotalWrap}>
+            <MealTotalSummary totals={totals} />
+          </View>
+        ) : null}
+
+        {items.length === 0 ? (
+          <View style={styles.empty}>
+            <View style={styles.emptyIcon}>
+              <Ionicons name="scan-outline" size={27} color={theme.colors.primary} />
+            </View>
+            <Text style={styles.emptyTitle}>拍照或添加食物</Text>
+          </View>
+        ) : (
+          items.map((item, index) => (
+            <MealItemEditor
+              key={item.id}
+              item={item}
+              onChange={(nextItem) => updateItem(index, nextItem)}
+              onAddToCatalog={addItemToCatalog}
+              addingToCatalog={catalogSavingId === item.id}
+              onRemove={() =>
+                setItems((current) => current.filter((currentItem) => currentItem.id !== item.id))
+              }
+            />
+          ))
+        )}
+
+        <View style={styles.notesWrap}>
+          <Ionicons name="create-outline" size={19} color={theme.colors.textMuted} />
+          <TextInput
+            value={notes}
+            onChangeText={setNotes}
+            placeholder="添加备注（可选）"
+            placeholderTextColor={theme.colors.textFaint}
+            style={styles.notes}
           />
-        ))
-      )}
+        </View>
 
-      <View style={styles.notesWrap}>
-        <Ionicons name="create-outline" size={19} color={theme.colors.textMuted} />
-        <TextInput
-          value={notes}
-          onChangeText={setNotes}
-          placeholder="添加备注（可选）"
-          placeholderTextColor={theme.colors.textFaint}
-          style={styles.notes}
-        />
-      </View>
+        <Text style={styles.disclaimer}>营养数据为估算值，请按实际份量修正。</Text>
+      </Screen>
 
-      <AppButton
-        label="保存"
-        icon="checkmark"
-        onPress={handleSave}
-        loading={saving}
-        disabled={busy}
+      <AIRecognitionOverlay
+        elapsedSeconds={recognitionElapsedSeconds}
+        photoCount={foodImages.length}
+        visible={processing === 'recognizing'}
       />
-      <Text style={styles.disclaimer}>营养数据为估算值，请按实际份量修正。</Text>
-    </Screen>
+    </>
   );
 }
 
@@ -515,6 +559,8 @@ function AIRecognizeButton({
   disabled: boolean;
   photoCount: number;
 }) {
+  const muted = disabled && !loading;
+
   return (
     <Pressable
       accessibilityLabel="AI 识别当前图片"
@@ -523,49 +569,124 @@ function AIRecognizeButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.aiRecognizeButton,
-        disabled && styles.aiRecognizeButtonDisabled,
+        muted && styles.aiRecognizeButtonDisabled,
         pressed && styles.aiRecognizeButtonPressed,
       ]}
     >
-      <View style={[styles.aiRecognizeIcon, disabled && styles.aiRecognizeIconDisabled]}>
-        <Ionicons
-          name="sparkles"
-          size={23}
-          color={disabled ? theme.colors.primary : '#FFFFFF'}
-        />
-      </View>
-      <View style={styles.aiRecognizeTextWrap}>
-        <Text
-          style={[
-            styles.aiRecognizeTitle,
-            disabled && styles.aiRecognizeTitleDisabled,
-          ]}
-        >
-          AI 识别
-        </Text>
-        <Text
-          style={[
-            styles.aiRecognizeMeta,
-            disabled && styles.aiRecognizeMetaDisabled,
-          ]}
-        >
-          {photoCount > 0 ? `当前 ${photoCount} 张图片` : '添加图片后可用'}
-        </Text>
-      </View>
-      {loading ? (
-        <ActivityIndicator color="#FFFFFF" size="small" />
-      ) : (
-        <Ionicons
-          name="chevron-forward"
-          size={21}
-          color={disabled ? theme.colors.primary : '#FFFFFF'}
-        />
-      )}
+      <LinearGradient
+        colors={
+          muted
+            ? ['#F7F9FE', '#F7F9FE']
+            : [theme.colors.primary, '#6C4DFF', theme.colors.accent]
+        }
+        end={{ x: 1, y: 1 }}
+        start={{ x: 0, y: 0 }}
+        style={styles.aiRecognizeGradient}
+      >
+        <View style={[styles.aiRecognizeIcon, muted && styles.aiRecognizeIconDisabled]}>
+          <Ionicons
+            name="sparkles"
+            size={23}
+            color={muted ? theme.colors.primary : '#FFFFFF'}
+          />
+        </View>
+        <View style={styles.aiRecognizeTextWrap}>
+          <Text
+            style={[
+              styles.aiRecognizeTitle,
+              muted && styles.aiRecognizeTitleDisabled,
+            ]}
+          >
+            AI 识别
+          </Text>
+          <Text
+            style={[
+              styles.aiRecognizeMeta,
+              muted && styles.aiRecognizeMetaDisabled,
+            ]}
+          >
+            {photoCount > 0 ? `当前 ${photoCount} 张图片` : '添加图片后可用'}
+          </Text>
+        </View>
+        {loading ? (
+          <ActivityIndicator color="#FFFFFF" size="small" />
+        ) : (
+          <Ionicons
+            name="chevron-forward"
+            size={21}
+            color={muted ? theme.colors.primary : '#FFFFFF'}
+          />
+        )}
+      </LinearGradient>
     </Pressable>
   );
 }
 
+function AIRecognitionOverlay({
+  visible,
+  elapsedSeconds,
+  photoCount,
+}: {
+  visible: boolean;
+  elapsedSeconds: number;
+  photoCount: number;
+}) {
+  const detail =
+    elapsedSeconds >= 30
+      ? '图片较复杂，正在继续等待结果。'
+      : '通常需要 10-30 秒，复杂图片会更久。';
+
+  return (
+    <Modal
+      animationType="fade"
+      onRequestClose={() => undefined}
+      statusBarTranslucent
+      transparent
+      visible={visible}
+    >
+      <View style={styles.aiOverlayBackdrop}>
+        <View
+          accessibilityRole="progressbar"
+          accessibilityValue={{ text: `AI 识别已用 ${elapsedSeconds} 秒` }}
+          style={styles.aiOverlayCard}
+        >
+          <LinearGradient
+            colors={[theme.colors.primary, '#6C4DFF', theme.colors.accent]}
+            end={{ x: 1, y: 1 }}
+            start={{ x: 0, y: 0 }}
+            style={styles.aiOverlayIcon}
+          >
+            <Ionicons name="sparkles" size={28} color="#FFFFFF" />
+          </LinearGradient>
+          <Text style={styles.aiOverlayTitle}>正在 AI 识别</Text>
+          <Text style={styles.aiOverlayBody}>
+            正在分析 {photoCount} 张图片并估算食物份量。
+          </Text>
+          <View style={styles.aiOverlayTimer}>
+            <ActivityIndicator color={theme.colors.primary} size="small" />
+            <Text style={styles.aiOverlayTimerText}>已用 {elapsedSeconds} 秒</Text>
+          </View>
+          <Text style={styles.aiOverlayHint}>{detail}</Text>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 const styles = StyleSheet.create({
+  fixedHeader: {
+    width: '100%',
+    maxWidth: 680,
+    alignSelf: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 10,
+    backgroundColor: theme.colors.background,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(209, 217, 230, 0.8)',
+    boxShadow: '0 10px 24px rgba(16, 24, 40, 0.06)',
+    zIndex: 5,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -573,6 +694,11 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 2,
     paddingBottom: 2,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   headerTitleGroup: {
     flexDirection: 'row',
@@ -640,27 +766,28 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   aiRecognizeButton: {
-    minHeight: 74,
     borderRadius: 20,
     borderCurve: 'continuous',
-    backgroundColor: theme.colors.primary,
     borderWidth: 1,
     borderColor: theme.colors.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 13,
+    overflow: 'hidden',
     boxShadow: theme.shadows.primary,
   },
   aiRecognizeButtonDisabled: {
-    backgroundColor: theme.colors.surfaceRaised,
     borderColor: '#D9E2FF',
     boxShadow: theme.shadows.small,
   },
   aiRecognizeButtonPressed: {
     transform: [{ translateY: 1 }],
     opacity: 0.92,
+  },
+  aiRecognizeGradient: {
+    minHeight: 74,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 13,
   },
   aiRecognizeIcon: {
     width: 46,
@@ -694,6 +821,71 @@ const styles = StyleSheet.create({
   },
   aiRecognizeMetaDisabled: {
     color: theme.colors.textMuted,
+  },
+  aiOverlayBackdrop: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    backgroundColor: 'rgba(8, 13, 26, 0.58)',
+  },
+  aiOverlayCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 28,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.82)',
+    padding: 24,
+    alignItems: 'center',
+    boxShadow: '0 24px 60px rgba(16, 24, 40, 0.28)',
+  },
+  aiOverlayIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 22,
+    borderCurve: 'continuous',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+  },
+  aiOverlayTitle: {
+    color: theme.colors.text,
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  aiOverlayBody: {
+    marginTop: 9,
+    color: theme.colors.textMuted,
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  aiOverlayTimer: {
+    marginTop: 18,
+    minHeight: 44,
+    borderRadius: 22,
+    backgroundColor: theme.colors.primarySoft,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  aiOverlayTimerText: {
+    color: theme.colors.primary,
+    fontSize: 15,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+  aiOverlayHint: {
+    marginTop: 13,
+    color: theme.colors.textFaint,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   disabled: {
     opacity: 0.5,

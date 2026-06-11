@@ -8,6 +8,7 @@
     "scheme": "calories",
     "userInterfaceStyle": "light",
     "ios": {
+      "icon": "./assets/images/ios-icon.png",
       "supportsTablet": true,
       "bundleIdentifier": "com.patrick.caloriesai"
     },

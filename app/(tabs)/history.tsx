@@ -1,8 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
 import { EnergyRail } from '@/components/ui/EnergyRail';
@@ -10,7 +10,7 @@ import { MacroStrip } from '@/components/ui/MacroStrip';
 import { Screen } from '@/components/ui/Screen';
 import { theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
-import { formatChineseDate, recentDateKeys, toLocalDateKey } from '@/lib/date';
+import { formatChineseDate, toLocalDateKey } from '@/lib/date';
 import { getDayTotals, getMealsForDate, type DaySummary } from '@/lib/database';
 import { getMealDisplayTitle } from '@/lib/mealTitle';
 import type { MealRecord, MealType } from '@/types/domain';
@@ -29,24 +29,36 @@ const MEAL_ICONS: Record<MealType, keyof typeof Ionicons.glyphMap> = {
   snack: 'cafe-outline',
 };
 
+const WEEKDAY_LABELS = ['一', '二', '三', '四', '五', '六', '日'];
+
 export default function HistoryScreen() {
   const db = useSQLiteContext();
   const { targets } = useApp();
-  const dates = recentDateKeys(14);
   const [selectedDate, setSelectedDate] = useState(toLocalDateKey());
+  const [calendarExpanded, setCalendarExpanded] = useState(false);
+  const [visibleMonthKey, setVisibleMonthKey] = useState(() => monthKeyFromDateKey(toLocalDateKey()));
   const [summaries, setSummaries] = useState<Record<string, DaySummary>>({});
   const [meals, setMeals] = useState<MealRecord[]>([]);
+  const calendarDates = useMemo(() => buildCalendarDateKeys(visibleMonthKey), [visibleMonthKey]);
+  const calendarRows = useMemo(() => chunkDateKeys(calendarDates, 7), [calendarDates]);
+  const selectedWeekDates = useMemo(() => buildWeekDateKeys(selectedDate), [selectedDate]);
+  const displayedCalendarRows = calendarExpanded ? calendarRows : [selectedWeekDates];
+  const displayedDateKeys = calendarExpanded ? calendarDates : selectedWeekDates;
+  const summaryDateKeys = useMemo(
+    () => Array.from(new Set([selectedDate, ...displayedDateKeys])),
+    [displayedDateKeys, selectedDate],
+  );
 
   const load = useCallback(async () => {
     const [nextSummaries, nextMeals] = await Promise.all([
-      Promise.all(dates.map((dateKey) => getDayTotals(db, dateKey))),
+      Promise.all(summaryDateKeys.map((dateKey) => getDayTotals(db, dateKey))),
       getMealsForDate(db, selectedDate),
     ]);
     setSummaries(
       Object.fromEntries(nextSummaries.map((summary) => [summary.dateKey, summary])),
     );
     setMeals(nextMeals);
-  }, [dates.join(','), db, selectedDate]);
+  }, [summaryDateKeys, db, selectedDate]);
 
   useFocusEffect(
     useCallback(() => {
@@ -55,68 +67,165 @@ export default function HistoryScreen() {
   );
 
   const selectedSummary = summaries[selectedDate];
+  const visibleMonthDate = new Date(`${visibleMonthKey}-01T12:00:00`);
+  const visibleMonthLabel = `${visibleMonthDate.getFullYear()}年${visibleMonthDate.getMonth() + 1}月`;
+  const weekRangeLabel = formatWeekRange(selectedWeekDates);
+  const todayDateKey = toLocalDateKey();
+
+  const selectDate = (dateKey: string) => {
+    setSelectedDate(dateKey);
+    setVisibleMonthKey(monthKeyFromDateKey(dateKey));
+  };
+
+  const moveCalendarMonth = (offset: number) => {
+    setVisibleMonthKey((current) => addMonthsToMonthKey(current, offset));
+  };
+
+  const moveCalendarPeriod = (offset: number) => {
+    if (calendarExpanded) {
+      moveCalendarMonth(offset);
+      return;
+    }
+    const nextDateKey = addDaysToDateKey(selectedDate, offset * 7);
+    selectDate(nextDateKey);
+  };
 
   return (
     <Screen>
       <View style={styles.header}>
         <Text style={styles.title}>历史</Text>
         <View style={styles.period}>
-          <Ionicons name="pulse" size={16} color={theme.colors.primary} />
-          <Text style={styles.periodText}>14 天</Text>
+          <Ionicons name="calendar-outline" size={16} color={theme.colors.primary} />
+          <Text style={styles.periodText}>日历</Text>
         </View>
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.dateScroller}
-        contentContainerStyle={styles.dateRail}
-      >
-        {dates.map((dateKey) => {
-          const selected = dateKey === selectedDate;
-          const date = new Date(`${dateKey}T12:00:00`);
-          const dayCalories = summaries[dateKey]?.calories ?? 0;
-          const dayTarget = targets?.calories ?? 2000;
-          const progress = Math.min(1, dayCalories / dayTarget);
-          return (
-            <Pressable
-              key={dateKey}
-              accessibilityState={{ selected }}
-              onPress={() => setSelectedDate(dateKey)}
-              style={({ pressed }) => [
-                styles.dateCardShadow,
-                selected && styles.dateCardShadowSelected,
-                pressed && styles.pressed,
-              ]}
-            >
-              <View style={[styles.dateCard, selected && styles.dateCardSelected]}>
-                <Text style={[styles.weekday, selected && styles.selectedMuted]}>
-                  {date.toLocaleDateString('zh-CN', { weekday: 'short' })}
-                </Text>
-                <Text style={[styles.day, selected && styles.selectedText]}>{date.getDate()}</Text>
-                <View style={[styles.miniRail, selected && styles.miniRailSelected]}>
-                  <View
-                    style={[
-                      styles.miniFill,
-                      {
-                        width: `${progress * 100}%`,
-                        backgroundColor:
-                          selected
-                            ? dayCalories > dayTarget
-                              ? '#FFD8D0'
-                              : '#FFFFFF'
-                            : dayCalories > dayTarget
-                              ? theme.colors.accent
-                              : theme.colors.primary,
-                      },
-                    ]}
-                  />
-                </View>
+      <Card variant="base" style={styles.calendarCard}>
+        <View style={styles.calendarHeader}>
+          <Pressable
+            accessibilityLabel={calendarExpanded ? '上个月' : '上一周'}
+            accessibilityRole="button"
+            hitSlop={8}
+            onPress={() => moveCalendarPeriod(-1)}
+            style={({ pressed }) => [styles.calendarNavButton, pressed && styles.pressed]}
+          >
+            <Ionicons name="chevron-back" size={18} color={theme.colors.primary} />
+          </Pressable>
+
+          <View style={styles.calendarTitleGroup}>
+            <Text style={styles.calendarMonthTitle}>
+              {calendarExpanded ? visibleMonthLabel : weekRangeLabel}
+            </Text>
+            <Text style={styles.calendarMeta}>
+              {calendarExpanded ? '整月' : '选中周'}
+            </Text>
+          </View>
+
+          <Pressable
+            accessibilityLabel={calendarExpanded ? '下个月' : '下一周'}
+            accessibilityRole="button"
+            hitSlop={8}
+            onPress={() => moveCalendarPeriod(1)}
+            style={({ pressed }) => [styles.calendarNavButton, pressed && styles.pressed]}
+          >
+            <Ionicons name="chevron-forward" size={18} color={theme.colors.primary} />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: calendarExpanded }}
+            onPress={() => setCalendarExpanded((current) => !current)}
+            style={({ pressed }) => [styles.calendarExpandButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.calendarToggleActionText}>
+              {calendarExpanded ? '收起' : '展开'}
+            </Text>
+            <Ionicons
+              name={calendarExpanded ? 'chevron-up' : 'chevron-down'}
+              size={17}
+              color={theme.colors.primary}
+            />
+          </Pressable>
+        </View>
+
+        <View style={styles.calendarBody}>
+          <View style={styles.calendarWeekRow}>
+            {WEEKDAY_LABELS.map((label) => (
+              <Text key={label} style={styles.calendarWeekday}>
+                {label}
+              </Text>
+            ))}
+          </View>
+
+          <View style={styles.calendarGrid}>
+            {displayedCalendarRows.map((row, rowIndex) => (
+              <View key={`calendar-row-${rowIndex}`} style={styles.calendarGridRow}>
+                {row.map((dateKey) => {
+                  const date = new Date(`${dateKey}T12:00:00`);
+                  const selected = dateKey === selectedDate;
+                  const activeMonthKey = calendarExpanded ? visibleMonthKey : monthKeyFromDateKey(selectedDate);
+                  const inMonth = monthKeyFromDateKey(dateKey) === activeMonthKey;
+                  const daySummary = summaries[dateKey];
+                  const dayCalories = daySummary?.calories ?? 0;
+                  const dayTarget = targets?.calories ?? 2000;
+                  const hasData = dayCalories > 0;
+                  const overTarget = dayCalories > dayTarget;
+                  const progress = Math.min(1, dayCalories / dayTarget);
+
+                  return (
+                    <Pressable
+                      key={dateKey}
+                      accessibilityLabel={`查看 ${dateKey} 记录`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      onPress={() => selectDate(dateKey)}
+                      style={({ pressed }) => [
+                        styles.calendarDay,
+                        !inMonth && styles.calendarDayMuted,
+                        selected && styles.calendarDaySelected,
+                        dateKey === todayDateKey && !selected && styles.calendarDayToday,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.calendarDayText,
+                          !inMonth && styles.calendarDayTextMuted,
+                          selected && styles.calendarDayTextSelected,
+                        ]}
+                      >
+                        {date.getDate()}
+                      </Text>
+                      <View
+                        style={[
+                          styles.calendarDayRail,
+                          selected && styles.calendarDayRailSelected,
+                        ]}
+                      >
+                        {hasData ? (
+                          <View
+                            style={[
+                              styles.calendarDayFill,
+                              {
+                                width: `${progress * 100}%`,
+                                backgroundColor: selected
+                                  ? '#FFFFFF'
+                                  : overTarget
+                                    ? theme.colors.accent
+                                    : theme.colors.primary,
+                              },
+                            ]}
+                          />
+                        ) : null}
+                      </View>
+                    </Pressable>
+                  );
+                })}
               </View>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+            ))}
+          </View>
+        </View>
+      </Card>
 
       <View style={styles.summary}>
         <View pointerEvents="none" style={styles.summaryAccent} />
@@ -222,11 +331,84 @@ function SummaryMacro({
 }) {
   return (
     <View style={styles.summaryMacro}>
-      <View style={[styles.summaryMacroDot, { backgroundColor: color }]} />
-      <Text style={styles.summaryMacroLabel}>{label}</Text>
-      <Text style={styles.summaryMacroValue}>{Math.round(value)}</Text>
+      <View style={styles.summaryMacroTop}>
+        <View style={styles.summaryMacroLabelGroup}>
+          <View style={[styles.summaryMacroDot, { backgroundColor: color }]} />
+          <Text style={styles.summaryMacroLabel}>{label}</Text>
+        </View>
+        <Text
+          adjustsFontSizeToFit
+          minimumFontScale={0.68}
+          numberOfLines={1}
+          style={styles.summaryMacroValue}
+        >
+          {Math.round(value)}
+        </Text>
+      </View>
       <Text style={styles.summaryMacroLimit}>上限 {Math.round(target)}</Text>
     </View>
+  );
+}
+
+function monthKeyFromDateKey(dateKey: string): string {
+  return dateKey.slice(0, 7);
+}
+
+function addMonthsToMonthKey(monthKey: string, offset: number): string {
+  const date = new Date(`${monthKey}-01T12:00:00`);
+  date.setMonth(date.getMonth() + offset);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function buildCalendarDateKeys(monthKey: string): string[] {
+  const firstOfMonth = new Date(`${monthKey}-01T12:00:00`);
+  const mondayOffset = (firstOfMonth.getDay() + 6) % 7;
+  const cursor = new Date(firstOfMonth);
+  cursor.setDate(firstOfMonth.getDate() - mondayOffset);
+
+  return Array.from({ length: 42 }, () => {
+    const dateKey = toLocalDateKey(cursor);
+    cursor.setDate(cursor.getDate() + 1);
+    return dateKey;
+  });
+}
+
+function buildWeekDateKeys(dateKey: string): string[] {
+  const date = new Date(`${dateKey}T12:00:00`);
+  const mondayOffset = (date.getDay() + 6) % 7;
+  const cursor = new Date(date);
+  cursor.setDate(date.getDate() - mondayOffset);
+
+  return Array.from({ length: 7 }, () => {
+    const nextDateKey = toLocalDateKey(cursor);
+    cursor.setDate(cursor.getDate() + 1);
+    return nextDateKey;
+  });
+}
+
+function addDaysToDateKey(dateKey: string, days: number): string {
+  const date = new Date(`${dateKey}T12:00:00`);
+  date.setDate(date.getDate() + days);
+  return toLocalDateKey(date);
+}
+
+function formatWeekRange(dateKeys: string[]): string {
+  const firstKey = dateKeys[0] ?? toLocalDateKey();
+  const lastKey = dateKeys[dateKeys.length - 1] ?? firstKey;
+  const first = new Date(`${firstKey}T12:00:00`);
+  const last = new Date(`${lastKey}T12:00:00`);
+  if (first.getFullYear() !== last.getFullYear()) {
+    return `${first.getFullYear()}年${first.getMonth() + 1}月${first.getDate()}日-${last.getFullYear()}年${last.getMonth() + 1}月${last.getDate()}日`;
+  }
+  if (first.getMonth() !== last.getMonth()) {
+    return `${first.getMonth() + 1}月${first.getDate()}日-${last.getMonth() + 1}月${last.getDate()}日`;
+  }
+  return `${first.getMonth() + 1}月${first.getDate()}日-${last.getDate()}日`;
+}
+
+function chunkDateKeys(dateKeys: string[], size: number): string[][] {
+  return Array.from({ length: Math.ceil(dateKeys.length / size) }, (_, index) =>
+    dateKeys.slice(index * size, index * size + size),
   );
 }
 
@@ -257,89 +439,134 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
   },
-  dateRail: {
-    gap: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  dateScroller: {
-    marginHorizontal: -8,
-  },
-  dateCardShadow: {
-    width: 58,
-    height: 88,
-    borderRadius: 18,
-    borderCurve: 'continuous',
-    backgroundColor: theme.colors.surface,
-    ...Platform.select({
-      android: {
-        elevation: 3,
-        shadowColor: '#101828',
-      },
-      default: {
-        boxShadow: theme.shadows.small,
-      },
-    }),
-  },
-  dateCardShadowSelected: {
-    backgroundColor: theme.colors.primary,
-    ...Platform.select({
-      android: {
-        elevation: 0,
-        shadowColor: 'transparent',
-      },
-      default: {
-        boxShadow: 'none',
-      },
-    }),
-  },
-  dateCard: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    borderRadius: 18,
-    borderCurve: 'continuous',
+  calendarCard: {
+    padding: 0,
     overflow: 'hidden',
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.borderSoft,
+    borderColor: '#FFFFFF',
   },
-  dateCardSelected: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
+  calendarHeader: {
+    minHeight: 68,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
-  weekday: {
+  calendarTitleGroup: {
+    flex: 1,
+    minWidth: 0,
+  },
+  calendarMeta: {
+    marginTop: 2,
     color: theme.colors.textMuted,
-    fontSize: 10,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '800',
   },
-  day: {
-    color: theme.colors.text,
-    fontSize: 22,
-    lineHeight: 25,
+  calendarExpandButton: {
+    minHeight: 36,
+    minWidth: 74,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+    backgroundColor: theme.colors.surfaceTint,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  calendarToggleActionText: {
+    color: theme.colors.primary,
+    fontSize: 12,
     fontWeight: '900',
   },
-  selectedText: {
+  calendarBody: {
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.borderSoft,
+    padding: 14,
+    paddingTop: 12,
+    gap: 12,
+  },
+  calendarNavButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 13,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.surfaceTint,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarMonthTitle: {
+    color: theme.colors.text,
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  calendarWeekRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  calendarWeekday: {
+    flex: 1,
+    color: theme.colors.textMuted,
+    textAlign: 'center',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  calendarGrid: {
+    gap: 6,
+  },
+  calendarGridRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  calendarDay: {
+    flex: 1,
+    minWidth: 0,
+    aspectRatio: 1,
+    borderRadius: 14,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.surfaceInset,
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  calendarDayMuted: {
+    opacity: 0.45,
+  },
+  calendarDaySelected: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+    boxShadow: theme.shadows.primary,
+  },
+  calendarDayToday: {
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primarySoft,
+  },
+  calendarDayText: {
+    color: theme.colors.text,
+    fontSize: 14,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+  calendarDayTextMuted: {
+    color: theme.colors.textMuted,
+  },
+  calendarDayTextSelected: {
     color: '#FFFFFF',
   },
-  selectedMuted: {
-    color: '#DCE6FF',
-  },
-  miniRail: {
-    width: 34,
-    height: 5,
-    borderRadius: 3,
+  calendarDayRail: {
+    width: '58%',
+    height: 4,
+    borderRadius: 2,
     backgroundColor: theme.colors.surfaceMuted,
     overflow: 'hidden',
   },
-  miniRailSelected: {
+  calendarDayRailSelected: {
     backgroundColor: 'rgba(255,255,255,0.28)',
   },
-  miniFill: {
+  calendarDayFill: {
     height: '100%',
     minWidth: 2,
-    borderRadius: 3,
+    borderRadius: 2,
   },
   summary: {
     backgroundColor: theme.colors.surfaceRaised,
@@ -397,16 +624,25 @@ const styles = StyleSheet.create({
   summaryMacro: {
     flex: 1,
     minWidth: 0,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 6,
-    padding: 11,
+    gap: 7,
+    padding: 10,
     borderRadius: 12,
     borderCurve: 'continuous',
     borderWidth: 1,
     borderColor: theme.colors.borderSoft,
     backgroundColor: theme.colors.surfaceInset,
+  },
+  summaryMacroTop: {
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  summaryMacroLabelGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+    gap: 5,
   },
   summaryMacroDot: {
     width: 7,
@@ -420,14 +656,14 @@ const styles = StyleSheet.create({
   },
   summaryMacroValue: {
     flex: 1,
+    minWidth: 0,
     color: theme.colors.text,
     textAlign: 'right',
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: '900',
     fontVariant: ['tabular-nums'],
   },
   summaryMacroLimit: {
-    width: '100%',
     color: theme.colors.textMuted,
     textAlign: 'right',
     fontSize: 8,
