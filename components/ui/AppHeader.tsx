@@ -45,9 +45,10 @@ export function AppHeader({ title, compactTopInset = false }: Props) {
 
 const styles = StyleSheet.create({
   header: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.colors.surfaceRaised,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(17, 24, 39, 0.08)',
+    borderBottomColor: theme.colors.borderSoft,
+    boxShadow: '0 8px 20px rgba(16, 24, 40, 0.05)',
   },
   row: {
     minHeight: 64,
@@ -64,8 +65,8 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     borderCurve: 'continuous',
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.borderSoft,
+    backgroundColor: theme.colors.surfaceInset,
   },
   title: {
     flex: 1,

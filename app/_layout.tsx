@@ -23,7 +23,7 @@ export default function RootLayout() {
     colors: {
       ...DefaultTheme.colors,
       background: theme.colors.background,
-      card: theme.colors.surface,
+      card: theme.colors.surfaceRaised,
       primary: theme.colors.primary,
       text: theme.colors.text,
       border: theme.colors.border,
@@ -50,7 +50,7 @@ export default function RootLayout() {
                 options={{ headerShown: false, gestureEnabled: false }}
               />
               <Stack.Screen name="food-library" options={{ title: '食物库' }} />
-              <Stack.Screen name="edit-food" options={{ title: '食物' }} />
+              <Stack.Screen name="edit-food" options={{ title: '食物', presentation: 'modal' }} />
               <Stack.Screen name="select-food" options={{ title: '添加食物', presentation: 'modal' }} />
               <Stack.Screen name="edit-meal" options={{ title: '编辑记录', presentation: 'modal' }} />
               <Stack.Screen name="+not-found" options={{ title: '页面不存在' }} />

@@ -34,12 +34,14 @@ const styles = StyleSheet.create({
   input: {
     minHeight: 50,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: theme.colors.borderSoft,
     borderRadius: theme.radius.small,
-    backgroundColor: theme.colors.background,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.surfaceInset,
     paddingHorizontal: 14,
     color: theme.colors.text,
     fontSize: 16,
+    boxShadow: 'inset 0 1px 0 rgba(16, 24, 40, 0.03)',
   },
   hint: {
     color: theme.colors.textMuted,

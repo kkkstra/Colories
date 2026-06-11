@@ -91,6 +91,7 @@ export default function TodayScreen() {
       </View>
 
       <View style={styles.dashboard}>
+        <View pointerEvents="none" style={styles.dashboardAccent} />
         <View style={styles.hero}>
           <View>
             <Text style={styles.calorieLabel}>{remaining < 0 ? '超出' : '剩余'}</Text>
@@ -165,7 +166,7 @@ export default function TodayScreen() {
             onPress={() => router.push({ pathname: '/edit-meal', params: { id: String(meal.id) } })}
             style={({ pressed }) => pressed && styles.pressed}
           >
-            <Card style={styles.mealCard}>
+            <Card variant="base" style={styles.mealCard}>
               <View style={styles.mealIcon}>
                 <Ionicons name={MEAL_ICONS[meal.mealType]} size={21} color={theme.colors.primary} />
               </View>
@@ -311,17 +312,32 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    boxShadow: theme.shadows.primary,
   },
   pressed: {
     opacity: 0.72,
   },
   dashboard: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: theme.colors.surfaceRaised,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.large,
-    padding: 20,
+    borderColor: '#FFFFFF',
+    borderRadius: 24,
+    borderCurve: 'continuous',
+    padding: 21,
     gap: 18,
+    overflow: 'hidden',
+    boxShadow: theme.shadows.large,
+  },
+  dashboardAccent: {
+    position: 'absolute',
+    top: 18,
+    right: 0,
+    width: 6,
+    height: 106,
+    borderTopLeftRadius: 6,
+    borderBottomLeftRadius: 6,
+    backgroundColor: theme.colors.accent,
+    opacity: 0.9,
   },
   hero: {
     flexDirection: 'row',
@@ -364,6 +380,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 9,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    boxShadow: theme.shadows.small,
   },
   gaugeOver: {
     backgroundColor: theme.colors.accentSoft,
@@ -389,7 +408,10 @@ const styles = StyleSheet.create({
     minWidth: 0,
     padding: 12,
     borderRadius: 13,
-    backgroundColor: theme.colors.background,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+    backgroundColor: theme.colors.surfaceInset,
     gap: 7,
   },
   macroTileHeader: {
@@ -471,6 +493,7 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     borderColor: theme.colors.borderStrong,
     borderRadius: 18,
+    backgroundColor: theme.colors.surfaceInset,
   },
   emptyIcon: {
     width: 56,
@@ -496,7 +519,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: theme.colors.primarySoft,
+    backgroundColor: theme.colors.surfaceTint,
     alignItems: 'center',
     justifyContent: 'center',
   },

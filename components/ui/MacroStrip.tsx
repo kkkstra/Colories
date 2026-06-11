@@ -40,12 +40,13 @@ export function MacroStrip({ protein, carbs, fat }: Props) {
 
 const styles = StyleSheet.create({
   track: {
-    height: 6,
+    height: 7,
     flexDirection: 'row',
     gap: 3,
   },
   segment: {
     minWidth: 6,
-    borderRadius: 3,
+    borderRadius: 4,
+    boxShadow: 'inset 0 -1px 0 rgba(16, 24, 40, 0.08)',
   },
 });

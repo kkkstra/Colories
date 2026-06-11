@@ -106,6 +106,7 @@ export default function HistoryScreen() {
       </ScrollView>
 
       <View style={styles.summary}>
+        <View pointerEvents="none" style={styles.summaryAccent} />
         <View style={styles.summaryTop}>
           <Text style={styles.summaryDate}>{formatChineseDate(selectedDate)}</Text>
           <View style={styles.summaryRight}>
@@ -145,7 +146,7 @@ export default function HistoryScreen() {
             onPress={() => router.push({ pathname: '/edit-meal', params: { id: String(meal.id) } })}
             style={({ pressed }) => pressed && styles.pressed}
           >
-            <Card style={styles.mealCard}>
+            <Card variant="base" style={styles.mealCard}>
               <View style={styles.mealIcon}>
                 <Ionicons name={MEAL_ICONS[meal.mealType]} size={20} color={theme.colors.primary} />
               </View>
@@ -230,11 +231,13 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: theme.colors.borderSoft,
+    boxShadow: theme.shadows.small,
   },
   dateCardSelected: {
-    backgroundColor: theme.colors.ink,
-    borderColor: theme.colors.ink,
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+    boxShadow: theme.shadows.primary,
   },
   weekday: {
     color: theme.colors.textMuted,
@@ -251,7 +254,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   selectedMuted: {
-    color: '#AEB9CD',
+    color: '#DCE6FF',
   },
   miniRail: {
     width: 34,
@@ -261,7 +264,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   miniRailSelected: {
-    backgroundColor: '#344054',
+    backgroundColor: 'rgba(255,255,255,0.28)',
   },
   miniFill: {
     height: '100%',
@@ -269,12 +272,25 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   summary: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: theme.colors.surfaceRaised,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.large,
+    borderColor: '#FFFFFF',
+    borderRadius: 24,
+    borderCurve: 'continuous',
     padding: 20,
     gap: 17,
+    overflow: 'hidden',
+    boxShadow: theme.shadows.large,
+  },
+  summaryAccent: {
+    position: 'absolute',
+    left: 0,
+    top: 18,
+    width: 6,
+    height: 88,
+    borderTopRightRadius: 6,
+    borderBottomRightRadius: 6,
+    backgroundColor: theme.colors.primary,
   },
   summaryTop: {
     flexDirection: 'row',
@@ -316,7 +332,10 @@ const styles = StyleSheet.create({
     gap: 6,
     padding: 11,
     borderRadius: 12,
-    backgroundColor: theme.colors.background,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+    backgroundColor: theme.colors.surfaceInset,
   },
   summaryMacroDot: {
     width: 7,
@@ -368,6 +387,7 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     borderColor: theme.colors.borderStrong,
     borderRadius: 18,
+    backgroundColor: theme.colors.surfaceInset,
   },
   emptyIcon: {
     width: 52,
@@ -392,7 +412,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 14,
-    backgroundColor: theme.colors.primarySoft,
+    backgroundColor: theme.colors.surfaceTint,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -116,7 +116,7 @@ export default function SelectFoodScreen() {
 
   return (
     <Screen topSafe={false} contentContainerStyle={styles.screen}>
-      <Card style={styles.searchCard}>
+      <Card variant="prominent" style={styles.searchCard}>
         <FormField
           label="搜索食物"
           value={query}
@@ -154,7 +154,7 @@ export default function SelectFoodScreen() {
         </Pressable>
       </View>
 
-      <Card style={styles.resultCard}>
+      <Card variant="base" style={styles.resultCard}>
         {foods.length === 0 ? (
           <View style={styles.empty}>
             <Ionicons name={loading ? 'hourglass-outline' : 'search-outline'} size={24} color={theme.colors.textMuted} />
@@ -219,6 +219,7 @@ const styles = StyleSheet.create({
   },
   searchCard: {
     gap: 12,
+    borderColor: '#FFFFFF',
   },
   listHeader: {
     flexDirection: 'row',
@@ -243,8 +244,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     borderRadius: 12,
+    borderCurve: 'continuous',
     backgroundColor: theme.colors.primarySoft,
     paddingHorizontal: 13,
+    boxShadow: theme.shadows.small,
   },
   createText: {
     color: theme.colors.primary,
@@ -254,6 +257,7 @@ const styles = StyleSheet.create({
   resultCard: {
     paddingVertical: 4,
     gap: 0,
+    overflow: 'hidden',
   },
   foodRow: {
     minHeight: 74,
@@ -263,7 +267,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: theme.colors.borderSoft,
   },
   foodCopy: {
     flex: 1,
@@ -300,6 +304,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    backgroundColor: theme.colors.surfaceInset,
   },
   emptyText: {
     color: theme.colors.textMuted,

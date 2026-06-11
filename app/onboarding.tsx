@@ -79,7 +79,7 @@ export default function OnboardingScreen() {
         <Text style={styles.subtitle}>身体数据只保存在本机</Text>
       </View>
 
-      <Card style={styles.sectionCard}>
+      <Card variant="base" style={styles.sectionCard}>
         <SectionTitle icon="body-outline" title="身体" />
         <View style={styles.row}>
           <View style={styles.flex}>
@@ -117,7 +117,7 @@ export default function OnboardingScreen() {
         />
       </Card>
 
-      <Card style={styles.sectionCard}>
+      <Card variant="base" style={styles.sectionCard}>
         <SectionTitle icon="walk-outline" title="活动" />
         <ChoiceChips
           value={activityLevel}
@@ -132,7 +132,7 @@ export default function OnboardingScreen() {
         />
       </Card>
 
-      <Card style={styles.sectionCard}>
+      <Card variant="base" style={styles.sectionCard}>
         <SectionTitle icon="flag-outline" title="目标" />
         <ChoiceChips
           value={goal}
@@ -189,10 +189,12 @@ const styles = StyleSheet.create({
     minHeight: 226,
     padding: 22,
     borderRadius: theme.radius.large,
+    borderCurve: 'continuous',
     backgroundColor: theme.colors.ink,
     overflow: 'hidden',
     justifyContent: 'flex-end',
     gap: 6,
+    boxShadow: theme.shadows.large,
   },
   heroIcon: {
     position: 'absolute',
@@ -232,6 +234,7 @@ const styles = StyleSheet.create({
   },
   sectionCard: {
     gap: 15,
+    borderColor: '#FFFFFF',
   },
   sectionHeading: {
     flexDirection: 'row',
@@ -242,7 +245,10 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 13,
-    backgroundColor: theme.colors.primarySoft,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.surfaceTint,
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -269,7 +275,10 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingVertical: 10,
     borderRadius: 12,
-    backgroundColor: theme.colors.background,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+    backgroundColor: theme.colors.surfaceInset,
   },
   targetDot: {
     width: 7,

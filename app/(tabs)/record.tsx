@@ -253,7 +253,7 @@ export default function RecordScreen() {
       </View>
 
       {busy ? (
-        <Card style={styles.processing}>
+        <Card variant="prominent" style={styles.processing}>
           <View style={styles.processingIcon}>
             <Ionicons name="scan-outline" size={24} color="#FFFFFF" />
           </View>
@@ -416,17 +416,20 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 132,
     borderRadius: 20,
+    borderCurve: 'continuous',
     backgroundColor: theme.colors.surface,
     padding: 16,
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: theme.colors.borderSoft,
+    boxShadow: theme.shadows.medium,
   },
   photoButtonPrimary: {
     flex: 1.35,
     backgroundColor: theme.colors.primary,
     borderColor: theme.colors.primary,
+    boxShadow: theme.shadows.primary,
   },
   photoIcon: {
     width: 56,
@@ -456,7 +459,8 @@ const styles = StyleSheet.create({
   processing: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderColor: theme.colors.primary,
+    borderColor: '#FFFFFF',
+    backgroundColor: theme.colors.surfaceTint,
   },
   processingIcon: {
     width: 44,
@@ -475,7 +479,11 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 250,
     borderRadius: theme.radius.large,
+    borderCurve: 'continuous',
     backgroundColor: theme.colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    boxShadow: theme.shadows.medium,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -524,6 +532,7 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     borderColor: theme.colors.borderStrong,
     borderRadius: 18,
+    backgroundColor: theme.colors.surfaceInset,
   },
   emptyIcon: {
     width: 52,
@@ -541,12 +550,14 @@ const styles = StyleSheet.create({
   totalCard: {
     backgroundColor: theme.colors.ink,
     borderRadius: 18,
+    borderCurve: 'continuous',
     paddingHorizontal: 18,
     paddingVertical: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 18,
+    boxShadow: theme.shadows.large,
   },
   totalVisual: {
     flex: 1,
@@ -578,9 +589,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: theme.colors.borderSoft,
     borderRadius: 13,
-    backgroundColor: theme.colors.surface,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.surfaceInset,
     paddingHorizontal: 14,
   },
   notes: {
@@ -597,8 +609,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.primary,
     borderRadius: 15,
-    backgroundColor: theme.colors.surface,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.surfaceRaised,
     paddingHorizontal: 14,
+    boxShadow: theme.shadows.small,
   },
   mealTitleInput: {
     flex: 1,

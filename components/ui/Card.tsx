@@ -4,12 +4,20 @@ import Animated, { Easing, FadeIn, LinearTransition } from 'react-native-reanima
 
 import { theme } from '@/constants/Theme';
 
-export function Card({ style, children, ...props }: PropsWithChildren<ViewProps>) {
+type CardVariant = 'raised' | 'base' | 'prominent' | 'inset';
+
+type Props = PropsWithChildren<
+  ViewProps & {
+    variant?: CardVariant;
+  }
+>;
+
+export function Card({ style, children, variant = 'raised', ...props }: Props) {
   return (
     <Animated.View
       entering={FadeIn.duration(120).easing(Easing.out(Easing.cubic))}
       layout={LinearTransition.duration(160).easing(Easing.out(Easing.cubic))}
-      style={[styles.card, style]}
+      style={[styles.card, styles[variant], style]}
       {...props}
     >
       {children}
@@ -19,11 +27,26 @@ export function Card({ style, children, ...props }: PropsWithChildren<ViewProps>
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: 18,
+    backgroundColor: theme.colors.surfaceRaised,
+    borderRadius: theme.radius.medium,
+    borderCurve: 'continuous',
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: theme.colors.borderSoft,
     padding: 16,
     gap: 14,
+  },
+  raised: {
+    boxShadow: theme.shadows.medium,
+  },
+  base: {
+    boxShadow: theme.shadows.small,
+  },
+  prominent: {
+    borderColor: '#FFFFFF',
+    boxShadow: theme.shadows.large,
+  },
+  inset: {
+    backgroundColor: theme.colors.surfaceInset,
+    borderColor: theme.colors.border,
   },
 });

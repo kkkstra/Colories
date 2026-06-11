@@ -73,7 +73,7 @@ const styles = StyleSheet.create({
     maxWidth: 680,
     alignSelf: 'center',
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'web' ? 24 : 12,
-    gap: 14,
+    paddingTop: Platform.OS === 'web' ? 26 : 14,
+    gap: 16,
   },
 });

@@ -41,7 +41,7 @@ export function MealItemEditor({
   };
 
   return (
-    <Card style={styles.card}>
+    <Card variant="base" style={styles.card}>
       <View style={styles.sourceRow}>
         <View
           style={[
@@ -224,9 +224,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     padding: 14,
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.colors.surfaceInset,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: theme.colors.borderSoft,
   },
   sourceMark: {
     width: 34,
@@ -235,6 +235,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    boxShadow: theme.shadows.small,
   },
   sourceMarkAi: {
     backgroundColor: theme.colors.accent,
@@ -264,9 +265,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingTop: 12,
     paddingBottom: 14,
-    backgroundColor: '#F7F9FF',
+    backgroundColor: theme.colors.surfaceTint,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: theme.colors.borderSoft,
   },
   choiceTitle: {
     color: theme.colors.textMuted,
@@ -285,8 +286,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderCurve: 'continuous',
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.borderSoft,
+    backgroundColor: theme.colors.surfaceRaised,
     padding: 10,
   },
   choiceButtonSelected: {
@@ -336,6 +337,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 9,
+    borderCurve: 'continuous',
     backgroundColor: theme.colors.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
@@ -344,7 +346,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.colors.surfaceRaised,
     borderRadius: 7,
     paddingHorizontal: 9,
     paddingVertical: 5,
@@ -370,7 +372,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 7,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: theme.colors.borderSoft,
     backgroundColor: theme.colors.primarySoft,
   },
   catalogActionDisabled: {
@@ -405,11 +407,12 @@ const styles = StyleSheet.create({
   input: {
     minHeight: 42,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: theme.colors.borderSoft,
     borderRadius: 8,
+    borderCurve: 'continuous',
     paddingHorizontal: 10,
     color: theme.colors.text,
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.colors.surfaceInset,
     fontWeight: '800',
     fontVariant: ['tabular-nums'],
   },

@@ -55,14 +55,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   rail: {
-    height: 14,
-    borderRadius: 7,
+    height: 15,
+    borderRadius: 8,
     overflow: 'visible',
     backgroundColor: theme.colors.surfaceMuted,
+    boxShadow: 'inset 0 1px 2px rgba(16, 24, 40, 0.08)',
   },
   fill: {
     height: '100%',
-    borderRadius: 7,
+    borderRadius: 8,
   },
   warningZone: {
     position: 'absolute',
@@ -86,6 +87,7 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 2,
     backgroundColor: theme.colors.ink,
+    boxShadow: '0 2px 5px rgba(16, 24, 40, 0.22)',
   },
   markerOver: {
     backgroundColor: theme.colors.danger,

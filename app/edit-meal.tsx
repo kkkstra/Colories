@@ -140,7 +140,7 @@ export default function EditMealScreen() {
         </View>
         <Text style={styles.title}>编辑记录</Text>
       </View>
-      <Card style={styles.metaCard}>
+      <Card variant="prominent" style={styles.metaCard}>
         <View style={styles.metaTitleRow}>
           <Text style={styles.metaTitle}>本餐信息</Text>
           <Text style={styles.timeText}>
@@ -222,7 +222,10 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 14,
-    backgroundColor: theme.colors.primarySoft,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.surfaceTint,
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -246,9 +249,14 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 250,
     borderRadius: theme.radius.large,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    boxShadow: theme.shadows.medium,
   },
   metaCard: {
     gap: 13,
+    borderColor: '#FFFFFF',
   },
   metaTitleRow: {
     flexDirection: 'row',
@@ -278,11 +286,13 @@ const styles = StyleSheet.create({
   total: {
     backgroundColor: theme.colors.ink,
     borderRadius: theme.radius.medium,
+    borderCurve: 'continuous',
     paddingHorizontal: 18,
     paddingVertical: 17,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    boxShadow: theme.shadows.large,
   },
   totalValue: {
     color: '#FFFFFF',

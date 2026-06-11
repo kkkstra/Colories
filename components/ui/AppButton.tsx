@@ -69,7 +69,8 @@ export function AppButton({
 const styles = StyleSheet.create({
   base: {
     minHeight: 52,
-    borderRadius: 12,
+    borderRadius: 14,
+    borderCurve: 'continuous',
     paddingHorizontal: 18,
     flexDirection: 'row',
     gap: 8,
@@ -81,14 +82,17 @@ const styles = StyleSheet.create({
   primary: {
     backgroundColor: theme.colors.primary,
     borderColor: theme.colors.primary,
+    boxShadow: theme.shadows.primary,
   },
   secondary: {
-    backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.borderStrong,
+    backgroundColor: theme.colors.surfaceRaised,
+    borderColor: theme.colors.borderSoft,
+    boxShadow: theme.shadows.small,
   },
   danger: {
     backgroundColor: theme.colors.danger,
     borderColor: theme.colors.danger,
+    boxShadow: '0 12px 24px rgba(217, 45, 32, 0.2)',
   },
   disabled: {
     opacity: 0.45,

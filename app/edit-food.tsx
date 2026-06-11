@@ -162,7 +162,7 @@ export default function EditFoodScreen() {
 
   return (
     <Screen topSafe={false} contentContainerStyle={styles.screen}>
-      <Card style={styles.formCard}>
+      <Card variant="prominent" style={styles.formCard}>
         <View style={styles.formTitleRow}>
           <View style={styles.titleMark}>
             <Ionicons name={draft.id ? 'create-outline' : 'add'} size={22} color={theme.colors.primary} />
@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
   },
   formCard: {
     gap: 14,
-    borderColor: theme.colors.primary,
+    borderColor: '#FFFFFF',
   },
   formTitleRow: {
     flexDirection: 'row',
@@ -302,7 +302,10 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: theme.colors.primarySoft,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.surfaceTint,
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -351,7 +354,9 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 14,
     borderRadius: 12,
+    borderCurve: 'continuous',
     backgroundColor: theme.colors.accentSoft,
+    boxShadow: theme.shadows.small,
   },
   deleteText: {
     color: theme.colors.danger,

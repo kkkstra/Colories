@@ -70,7 +70,7 @@ export default function InsightsScreen() {
         </View>
       </View>
 
-      <Card style={styles.hero}>
+      <Card variant="prominent" style={styles.hero}>
         <View style={styles.heroTop}>
           <View>
             <Text style={styles.heroLabel}>日均摄入</Text>
@@ -118,7 +118,7 @@ export default function InsightsScreen() {
         </View>
       </View>
 
-      <Card style={styles.todayCard}>
+      <Card variant="base" style={styles.todayCard}>
         <View style={styles.todayTop}>
           <View>
             <Text style={styles.todayMeta}>{formatChineseDate(latest.dateKey)}</Text>
@@ -160,9 +160,11 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
+    boxShadow: theme.shadows.small,
   },
   hero: {
     gap: 14,
+    borderColor: '#FFFFFF',
   },
   heroTop: {
     flexDirection: 'row',
@@ -195,7 +197,10 @@ const styles = StyleSheet.create({
   activeDays: {
     minWidth: 86,
     borderRadius: 18,
-    backgroundColor: theme.colors.primarySoft,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.surfaceTint,
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
     alignItems: 'center',
     paddingVertical: 10,
   },
@@ -211,11 +216,13 @@ const styles = StyleSheet.create({
   },
   chartCard: {
     borderRadius: theme.radius.large,
-    backgroundColor: theme.colors.surface,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.surfaceRaised,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: '#FFFFFF',
     padding: 16,
     gap: 16,
+    boxShadow: theme.shadows.medium,
   },
   chartHeader: {
     flexDirection: 'row',
@@ -247,9 +254,11 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 116,
     borderRadius: 16,
-    backgroundColor: theme.colors.surfaceMuted,
+    backgroundColor: theme.colors.surfaceInset,
     justifyContent: 'flex-end',
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
   },
   barFill: {
     width: '100%',

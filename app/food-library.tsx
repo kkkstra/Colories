@@ -118,7 +118,7 @@ export default function FoodLibraryScreen() {
         <StatTile label="我的" value={stats.custom} />
       </View>
 
-      <Card style={styles.searchCard}>
+      <Card variant="prominent" style={styles.searchCard}>
         <View style={styles.searchHeader}>
           <View style={styles.searchField}>
             <FormField
@@ -206,7 +206,7 @@ function FoodRow({ food }: { food: ManagedFood }) {
 
   return (
     <Pressable accessibilityRole="button" onPress={handlePress} style={({ pressed }) => pressed && styles.pressed}>
-      <Card style={styles.foodCard}>
+      <Card variant="base" style={styles.foodCard}>
         <View style={styles.foodTop}>
           <View style={styles.foodNameBlock}>
             <Text style={styles.foodName}>{food.nameZh}</Text>
@@ -276,12 +276,14 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 76,
     borderRadius: 16,
-    backgroundColor: theme.colors.surface,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.surfaceRaised,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
+    boxShadow: theme.shadows.small,
   },
   statValue: {
     color: theme.colors.text,
@@ -296,6 +298,7 @@ const styles = StyleSheet.create({
   },
   searchCard: {
     gap: 12,
+    borderColor: '#FFFFFF',
   },
   searchHeader: {
     flexDirection: 'row',
@@ -310,9 +313,11 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 14,
+    borderCurve: 'continuous',
     backgroundColor: theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    boxShadow: theme.shadows.primary,
   },
   pressed: {
     opacity: 0.72,
@@ -352,6 +357,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: theme.colors.borderStrong,
+    backgroundColor: theme.colors.surfaceInset,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
@@ -413,7 +419,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 5,
     borderRadius: 11,
-    backgroundColor: theme.colors.background,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+    backgroundColor: theme.colors.surfaceInset,
     paddingVertical: 8,
     paddingHorizontal: 7,
   },
@@ -439,7 +448,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
+    borderTopColor: theme.colors.borderSoft,
   },
   sourceText: {
     flex: 1,

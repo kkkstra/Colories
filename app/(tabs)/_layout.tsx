@@ -251,8 +251,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.72)',
-    backgroundColor: 'rgba(255, 255, 255, 0.38)',
-    boxShadow: '0 18px 42px rgba(39, 93, 255, 0.18)',
+    backgroundColor: 'rgba(255, 255, 255, 0.58)',
+    boxShadow: '0 20px 44px rgba(16, 24, 40, 0.18)',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
@@ -270,7 +270,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   tabButtonFocused: {
-    backgroundColor: theme.colors.primarySoft,
+    backgroundColor: theme.colors.primaryWash,
+    borderWidth: 1,
+    borderColor: '#D9E2FF',
   },
   centerButton: {
     width: 66,
