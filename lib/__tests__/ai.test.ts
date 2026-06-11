@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   AIProviderError,
+  buildInsightAdviceRequestBody,
   buildRequestBody,
+  generateNutritionInsightAdvice,
+  parseInsightAdviceContent,
   parseRecognitionContent,
   testProviderConfiguration,
 } from '@/lib/ai';
@@ -19,6 +22,13 @@ const validContent = JSON.stringify({
     },
   ],
   warnings: ['份量为视觉估算'],
+});
+
+const validAdviceContent = JSON.stringify({
+  title: '晚餐稳一点',
+  summary: '最近 7 天热量波动较大，蛋白质接近目标但碳水集中在少数几天。',
+  actions: ['把晚餐主食固定到一拳左右。', '每餐保留一个稳定蛋白质来源。'],
+  warnings: ['有 2 天没有记录，趋势可能偏低。'],
 });
 
 describe('AI response handling', () => {
@@ -38,6 +48,8 @@ describe('AI response handling', () => {
     expect(jsonSchemaBody.response_format).toMatchObject({ type: 'json_schema' });
     expect(JSON.stringify(jsonSchemaBody)).toContain('meal_title');
     expect(JSON.stringify(jsonSchemaBody)).toContain('通用、简洁的中文食物库名称');
+    expect(JSON.stringify(jsonSchemaBody)).toContain('营养成分表');
+    expect(JSON.stringify(jsonSchemaBody)).toContain('先读取文字信息');
     expect(
       buildRequestBody({ ...base, responseMode: 'json_object' }, 'data:image/jpeg;base64,x')
         .response_format,
@@ -45,6 +57,68 @@ describe('AI response handling', () => {
     expect(
       buildRequestBody({ ...base, responseMode: 'prompt_json' }, 'data:image/jpeg;base64,x'),
     ).not.toHaveProperty('response_format');
+  });
+
+  it('builds multi-image recognition requests without duplicating prompt text', () => {
+    const body = buildRequestBody(
+      { baseUrl: 'https://example.com/v1', model: 'vision-model', responseMode: 'json_object' },
+      ['data:image/jpeg;base64,a', 'data:image/jpeg;base64,b'],
+    );
+    const content = (body.messages as any[])[1].content as any[];
+
+    expect(content.filter((part) => part.type === 'image_url')).toHaveLength(2);
+    expect(content.at(-1).text).toContain('不要重复统计同一道可见食物');
+  });
+
+  it('builds text-only insight advice requests', () => {
+    const body = buildInsightAdviceRequestBody(
+      { baseUrl: 'https://example.com/v1', model: 'chat-model', responseMode: 'json_schema' },
+      {
+        targets: { calories: 1800, protein: 110, carbs: 190, fat: 55 },
+        periodDays: 7,
+        missingDays: 6,
+        days: [
+          { dateKey: '2026-06-11', calories: 1710, protein: 90, carbs: 210, fat: 48 },
+        ],
+      },
+    );
+
+    expect(body.response_format).toMatchObject({ type: 'json_schema' });
+    const userContent = (body.messages as any[])[1].content as string;
+    expect(userContent).toContain('"missing_days":6');
+    expect(userContent).toContain('不要把缺失日期当作 0 摄入');
+    expect(JSON.stringify(body)).toContain('不提供医疗建议');
+    expect(JSON.stringify(body)).not.toContain('image_url');
+  });
+
+  it('parses insight advice JSON', () => {
+    const parsed = parseInsightAdviceContent(`\`\`\`json\n${validAdviceContent}\n\`\`\``);
+
+    expect(parsed.title).toBe('晚餐稳一点');
+    expect(parsed.actions).toHaveLength(2);
+    expect(parsed.warnings[0]).toContain('趋势可能偏低');
+  });
+
+  it('requests and parses nutrition insight advice', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ choices: [{ message: { content: validAdviceContent } }] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const result = await generateNutritionInsightAdvice(
+      { baseUrl: 'https://example.com/v1', model: 'chat-model', responseMode: 'json_object' },
+      'secret-key',
+      {
+        targets: { calories: 1800, protein: 110, carbs: 190, fat: 55 },
+        days: [{ dateKey: '2026-06-11', calories: 1710, protein: 90, carbs: 210, fat: 48 }],
+      },
+      fetchMock as typeof fetch,
+    );
+
+    expect(result.summary).toContain('热量波动');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('falls back from json_schema to json_object during capability testing', async () => {

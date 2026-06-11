@@ -12,11 +12,11 @@ import {
 import { createLocalId } from '@/lib/security';
 
 const MAX_UPLOAD_EDGE = 1600;
-const MAX_THUMBNAIL_EDGE = 360;
+const MAX_STORED_EDGE = 2400;
 
 export interface PreparedFoodImage {
   uploadDataUri: string;
-  thumbnailUri: string;
+  storedUri: string;
   width: number;
   height: number;
 }
@@ -49,44 +49,48 @@ export async function prepareFoodImage(
     throw new Error('图片编码失败，请重新选择照片。');
   }
 
-  const thumbnailContext = ImageManipulator.manipulate(uploadImage.uri);
-  const thumbnailSize = fitWithin(
-    uploadImage.width,
-    uploadImage.height,
-    MAX_THUMBNAIL_EDGE,
-  );
-  if (thumbnailSize) {
-    thumbnailContext.resize(thumbnailSize);
+  const storedContext = ImageManipulator.manipulate(sourceUri);
+  const storedSize = fitWithin(sourceWidth, sourceHeight, MAX_STORED_EDGE);
+  if (storedSize) {
+    storedContext.resize(storedSize);
   }
-  const thumbnailRef = await thumbnailContext.renderAsync();
-  const thumbnail = await thumbnailRef.saveAsync({
+  let storedRef = await storedContext.renderAsync();
+  if (!storedSize) {
+    const measuredStoredSize = fitWithin(storedRef.width, storedRef.height, MAX_STORED_EDGE);
+    if (measuredStoredSize) {
+      const measuredStoredContext = ImageManipulator.manipulate(sourceUri);
+      measuredStoredContext.resize(measuredStoredSize);
+      storedRef = await measuredStoredContext.renderAsync();
+    }
+  }
+  const storedImage = await storedRef.saveAsync({
     base64: Platform.OS === 'web',
-    compress: 0.66,
+    compress: 0.94,
     format: SaveFormat.JPEG,
   });
-  const thumbnailUri =
+  const storedUri =
     Platform.OS === 'web'
-      ? toJpegDataUri(thumbnail.base64)
-      : await persistThumbnail(thumbnail.uri);
+      ? toJpegDataUri(storedImage.base64)
+      : await persistMealPhoto(storedImage.uri);
 
-  cleanupTemporaryUri(sourceUri, [thumbnailUri]);
-  cleanupTemporaryUri(uploadImage.uri, [sourceUri, thumbnailUri]);
-  cleanupTemporaryUri(thumbnail.uri, [sourceUri, uploadImage.uri, thumbnailUri]);
+  cleanupTemporaryUri(sourceUri, [storedUri]);
+  cleanupTemporaryUri(uploadImage.uri, [sourceUri, storedUri]);
+  cleanupTemporaryUri(storedImage.uri, [sourceUri, uploadImage.uri, storedUri]);
 
   return {
     uploadDataUri: `data:image/jpeg;base64,${uploadImage.base64}`,
-    thumbnailUri,
-    width: uploadImage.width,
-    height: uploadImage.height,
+    storedUri,
+    width: storedImage.width,
+    height: storedImage.height,
   };
 }
 
-async function persistThumbnail(uri: string): Promise<string> {
+async function persistMealPhoto(uri: string): Promise<string> {
   const photosDirectory = new Directory(Paths.document, MEAL_PHOTO_DIRECTORY);
   photosDirectory.create({ idempotent: true, intermediates: true });
   const fileName = `${createLocalId('meal')}.jpg`;
-  const persistentThumbnail = new File(photosDirectory, fileName);
-  await new File(uri).copy(persistentThumbnail);
+  const persistentPhoto = new File(photosDirectory, fileName);
+  await new File(uri).copy(persistentPhoto);
   return createMealPhotoReference(fileName);
 }
 
@@ -109,6 +113,24 @@ export function resolveStoredPhotoUri(uri: string | undefined): string | undefin
     return uri;
   }
   return joinDocumentPhotoUri(Paths.document.uri, reference);
+}
+
+export async function deleteStoredPhoto(uri: string | undefined): Promise<void> {
+  if (!uri || Platform.OS === 'web') {
+    return;
+  }
+  const reference = extractMealPhotoReference(uri);
+  if (!reference) {
+    return;
+  }
+  try {
+    const file = new File(joinDocumentPhotoUri(Paths.document.uri, reference));
+    if (file.exists) {
+      file.delete();
+    }
+  } catch {
+    // Photo cleanup is best effort. The UI removal should never be blocked by file deletion.
+  }
 }
 
 function toJpegDataUri(base64: string | undefined): string {

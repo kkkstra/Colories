@@ -4,7 +4,7 @@ import { FOOD_CATALOG } from '@/data/foodCatalog';
 import { endOfLocalDayIso, startOfLocalDayIso, toLocalDateKey } from '@/lib/date';
 import { resolveMealTitle } from '@/lib/mealTitle';
 import { sumMacros } from '@/lib/nutrition';
-import { normalizeMealPhotoReference } from '@/lib/photoReference';
+import { normalizeMealPhotoReferences } from '@/lib/photoReference';
 import { createLocalId } from '@/lib/security';
 import type {
   AIProviderConfig,
@@ -14,11 +14,12 @@ import type {
   MealItemDraft,
   MealRecord,
   MealType,
+  NutritionInsightAdvice,
   NutritionSource,
   UserProfile,
 } from '@/types/domain';
 
-export const DATABASE_VERSION = 4;
+export const DATABASE_VERSION = 6;
 
 export const MIGRATION_V1_SQL = `
 PRAGMA journal_mode = WAL;
@@ -118,6 +119,34 @@ export const MIGRATION_V4_SQL = `
 ALTER TABLE food_catalog ADD COLUMN cooking_method TEXT;
 `;
 
+export const MIGRATION_V5_SQL = `
+CREATE TABLE IF NOT EXISTS meal_photos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  meal_id INTEGER NOT NULL REFERENCES meals(id) ON DELETE CASCADE,
+  uri TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_meal_photos_meal_id ON meal_photos(meal_id);
+
+INSERT INTO meal_photos (meal_id, uri, sort_order)
+SELECT id, photo_uri, 0
+FROM meals
+WHERE photo_uri IS NOT NULL AND photo_uri != '';
+`;
+
+export const MIGRATION_V6_SQL = `
+CREATE TABLE IF NOT EXISTS ai_insight_advice (
+  id TEXT PRIMARY KEY,
+  data_hash TEXT NOT NULL,
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  actions_json TEXT NOT NULL,
+  warnings_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`;
+
 export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
   const versionRow = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   const currentVersion = versionRow?.user_version ?? 0;
@@ -132,6 +161,12 @@ export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
   }
   if (currentVersion < 4) {
     await db.execAsync(MIGRATION_V4_SQL);
+  }
+  if (currentVersion < 5) {
+    await db.execAsync(MIGRATION_V5_SQL);
+  }
+  if (currentVersion < 6) {
+    await db.execAsync(MIGRATION_V6_SQL);
   }
   await seedFoodCatalog(db);
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
@@ -672,6 +707,7 @@ export async function saveMeal(
     mealType: MealType;
     title?: string;
     photoUri?: string;
+    photoUris?: string[];
     notes?: string;
     items: MealItemDraft[];
   },
@@ -680,6 +716,9 @@ export async function saveMeal(
   await db.withTransactionAsync(async () => {
     const now = new Date().toISOString();
     const title = resolveMealTitle(input.title, input.items);
+    const photoUris = normalizeMealPhotoReferences(
+      input.photoUris?.length ? input.photoUris : input.photoUri ? [input.photoUri] : undefined,
+    );
     const result = await db.runAsync(
       `INSERT INTO meals (eaten_at, date_key, meal_type, title, photo_uri, notes, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -687,12 +726,13 @@ export async function saveMeal(
       toLocalDateKey(new Date(input.eatenAt)),
       input.mealType,
       title ?? null,
-      normalizeMealPhotoReference(input.photoUri) ?? null,
+      photoUris[0] ?? null,
       input.notes ?? null,
       now,
       now,
     );
     mealId = result.lastInsertRowId;
+    await insertMealPhotos(db, mealId, photoUris);
     for (const item of input.items) {
       await insertMealItem(db, mealId, item);
     }
@@ -772,6 +812,22 @@ async function insertMealItem(
   );
 }
 
+async function insertMealPhotos(
+  db: SQLiteDatabase,
+  mealId: number,
+  photoUris: readonly string[],
+): Promise<void> {
+  for (const [index, uri] of photoUris.entries()) {
+    await db.runAsync(
+      `INSERT INTO meal_photos (meal_id, uri, sort_order)
+       VALUES (?, ?, ?)`,
+      mealId,
+      uri,
+      index,
+    );
+  }
+}
+
 export async function getMealsForDate(
   db: SQLiteDatabase,
   dateKey: string,
@@ -819,12 +875,26 @@ export async function getMealsForDate(
         catalogFoodId: row.catalog_food_id ?? undefined,
         warning: row.warning ?? undefined,
       }));
+      const photoRows = await db.getAllAsync<{ uri: string }>(
+        `SELECT uri FROM meal_photos
+         WHERE meal_id = ?
+         ORDER BY sort_order, id`,
+        meal.id,
+      );
+      const photoUris = normalizeMealPhotoReferences(
+        photoRows.length > 0
+          ? photoRows.map((photo) => photo.uri)
+          : meal.photo_uri
+            ? [meal.photo_uri]
+            : undefined,
+      );
       return {
         id: meal.id,
         eatenAt: meal.eaten_at,
         mealType: meal.meal_type,
         title: meal.title ?? undefined,
-        photoUri: meal.photo_uri ?? undefined,
+        photoUri: photoUris[0],
+        photoUris,
         notes: meal.notes ?? undefined,
         items,
         totals: sumMacros(items),
@@ -917,6 +987,82 @@ export async function saveProviderConfig(
   );
 }
 
+export interface CachedInsightAdvice extends NutritionInsightAdvice {
+  id: string;
+  dataHash: string;
+  updatedAt: string;
+}
+
+export async function getCachedInsightAdvice(
+  db: SQLiteDatabase,
+  id = 'weekly',
+): Promise<CachedInsightAdvice | null> {
+  const row = await db.getFirstAsync<{
+    id: string;
+    data_hash: string;
+    title: string;
+    summary: string;
+    actions_json: string;
+    warnings_json: string;
+    updated_at: string;
+  }>(
+    `SELECT id, data_hash, title, summary, actions_json, warnings_json, updated_at
+     FROM ai_insight_advice
+     WHERE id = ?`,
+    id,
+  );
+  if (!row) {
+    return null;
+  }
+  return {
+    id: row.id,
+    dataHash: row.data_hash,
+    title: row.title,
+    summary: row.summary,
+    actions: parseJsonStringArray(row.actions_json),
+    warnings: parseJsonStringArray(row.warnings_json),
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function saveCachedInsightAdvice(
+  db: SQLiteDatabase,
+  advice: Omit<CachedInsightAdvice, 'updatedAt'>,
+): Promise<CachedInsightAdvice> {
+  const updatedAt = new Date().toISOString();
+  await db.runAsync(
+    `INSERT INTO ai_insight_advice
+      (id, data_hash, title, summary, actions_json, warnings_json, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+      data_hash = excluded.data_hash,
+      title = excluded.title,
+      summary = excluded.summary,
+      actions_json = excluded.actions_json,
+      warnings_json = excluded.warnings_json,
+      updated_at = excluded.updated_at`,
+    advice.id,
+    advice.dataHash,
+    advice.title,
+    advice.summary,
+    JSON.stringify(advice.actions),
+    JSON.stringify(advice.warnings),
+    updatedAt,
+  );
+  return { ...advice, updatedAt };
+}
+
 function normalizeForDb(value: string): string {
   return value.trim().toLowerCase().replace(/[\s（）()、，,·]/g, '');
+}
+
+function parseJsonStringArray(value: string): string[] {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : [];
+  } catch {
+    return [];
+  }
 }

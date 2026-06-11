@@ -3,20 +3,28 @@ import { Redirect, router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { MealItemEditor } from '@/components/MealItemEditor';
 import { AppButton } from '@/components/ui/AppButton';
+import { HeaderIconButton } from '@/components/ui/AppHeader';
 import { Card } from '@/components/ui/Card';
 import { ChoiceChips } from '@/components/ui/ChoiceChips';
-import { MacroStrip } from '@/components/ui/MacroStrip';
+import { MealDateTimePicker } from '@/components/ui/MealDateTimePicker';
+import { MealTotalSummary } from '@/components/ui/MealTotalSummary';
+import { PhotoGallery, type PhotoGalleryItem } from '@/components/ui/PhotoGallery';
 import { Screen } from '@/components/ui/Screen';
 import { theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
-import { AIProviderError, recognizeFoodImage } from '@/lib/ai';
+import { AIProviderError, recognizeFoodImages } from '@/lib/ai';
 import { showAlert } from '@/lib/alert';
 import { findFoodMatch, saveCustomFood, saveMeal } from '@/lib/database';
-import { prepareFoodImage, resolveStoredPhotoUri } from '@/lib/image';
+import {
+  deleteStoredPhoto,
+  prepareFoodImage,
+  resolveStoredPhotoUri,
+  type PreparedFoodImage,
+} from '@/lib/image';
 import {
   createCustomFoodInputFromMealItem,
   createMealItemDraftFromRecognition,
@@ -27,6 +35,9 @@ import { sumMacros } from '@/lib/nutrition';
 import { getApiKey } from '@/lib/secureStorage';
 import { syncTodayNutritionWidget } from '@/lib/widgetSync';
 import type { MealItemDraft, MealType } from '@/types/domain';
+
+const MAX_MEAL_PHOTOS = 6;
+type ProcessingState = 'preparing' | 'recognizing' | null;
 
 export default function RecordScreen() {
   const db = useSQLiteContext();
@@ -39,13 +50,17 @@ export default function RecordScreen() {
     clearQueuedMealItem,
   } = useApp();
   const [mealType, setMealType] = useState<MealType>(() => inferMealTypeFromDate());
+  const [eatenAt, setEatenAt] = useState(() => new Date());
   const [mealTitle, setMealTitle] = useState('');
   const [items, setItems] = useState<MealItemDraft[]>([]);
-  const [photoUri, setPhotoUri] = useState<string>();
+  const [foodImages, setFoodImages] = useState<PreparedFoodImage[]>([]);
   const [notes, setNotes] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [processing, setProcessing] = useState<ProcessingState>(null);
   const [saving, setSaving] = useState(false);
   const [catalogSavingId, setCatalogSavingId] = useState<string>();
+  const busy = processing !== null;
+  const hasDraftContent =
+    foodImages.length > 0 || items.length > 0 || mealTitle.trim().length > 0 || notes.trim().length > 0;
 
   useEffect(() => {
     if (!queuedMealItem) {
@@ -70,6 +85,11 @@ export default function RecordScreen() {
     if (busy) {
       return;
     }
+    const remainingSlots = MAX_MEAL_PHOTOS - foodImages.length;
+    if (remainingSlots <= 0) {
+      showAlert('图片已达到上限', `一餐最多添加 ${MAX_MEAL_PHOTOS} 张图片。`);
+      return;
+    }
     if (source === 'camera') {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
@@ -89,44 +109,69 @@ export default function RecordScreen() {
             mediaTypes: ['images'],
             quality: 1,
             allowsEditing: false,
+            allowsMultipleSelection: true,
+            orderedSelection: true,
+            selectionLimit: remainingSlots,
           });
-    if (result.canceled || !result.assets[0]) {
+    if (result.canceled || result.assets.length === 0) {
       return;
     }
 
-    setBusy(true);
+    setProcessing('preparing');
     try {
-      const asset = result.assets[0];
-      const prepared = await prepareFoodImage(asset.uri, asset.width, asset.height);
-      setPhotoUri(prepared.thumbnailUri);
-      if (!providerConfig || !hasApiKey) {
-        showAlert(
-          '尚未配置 AI',
-          '照片已准备好。请先到设置中填写兼容接口，或直接使用本地食物库手动记录。',
-          [
-            { text: '手动记录', style: 'cancel' },
-            { text: '去设置', onPress: () => router.push('/(tabs)/settings') },
-          ],
-        );
-        return;
+      const preparedImages: PreparedFoodImage[] = [];
+      for (const asset of result.assets.slice(0, remainingSlots)) {
+        preparedImages.push(await prepareFoodImage(asset.uri, asset.width, asset.height));
       }
+      setFoodImages((current) => [...current, ...preparedImages]);
+    } catch (error) {
+      showAlert('添加图片失败', error instanceof Error ? error.message : String(error));
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  const handleRemovePhoto = (index: number) => {
+    if (busy) {
+      return;
+    }
+    setFoodImages((current) => {
+      const removed = current[index];
+      if (removed) {
+        void deleteStoredPhoto(removed.storedUri);
+      }
+      return current.filter((_, currentIndex) => currentIndex !== index);
+    });
+  };
+
+  const recognizeCurrentImages = async () => {
+    if (!providerConfig || !hasApiKey) {
+      showAlert(
+        '尚未配置 AI',
+        '请先到设置中填写兼容接口，或直接使用本地食物库手动记录。',
+        [
+          { text: '手动记录', style: 'cancel' },
+          { text: '去设置', onPress: () => router.push('/(tabs)/settings') },
+        ],
+      );
+      return;
+    }
+
+    setProcessing('recognizing');
+    try {
       const apiKey = await getApiKey();
       if (!apiKey) {
         throw new Error('安全存储中没有 API Key，请重新配置。');
       }
-      const recognized = await recognizeFoodImage(
+      const recognized = await recognizeFoodImages(
         providerConfig,
         apiKey,
-        prepared.uploadDataUri,
+        foodImages.map((image) => image.uploadDataUri),
       );
       const drafts: MealItemDraft[] = [];
       for (const food of recognized.foods) {
         const match = await findFoodMatch(db, food.name);
-        if (match) {
-          drafts.push(createMealItemDraftFromRecognition(food, match));
-        } else {
-          drafts.push(createMealItemDraftFromRecognition(food));
-        }
+        drafts.push(createMealItemDraftFromRecognition(food, match ?? undefined));
       }
       setItems(drafts);
       setMealTitle(recognized.mealTitle ?? createMealTitle(drafts) ?? '');
@@ -142,8 +187,59 @@ export default function RecordScreen() {
           : String(error);
       showAlert('识别失败', `${message}\n你仍可使用本地食物库手动记录。`);
     } finally {
-      setBusy(false);
+      setProcessing(null);
     }
+  };
+
+  const handleRecognizeImages = () => {
+    if (busy) {
+      return;
+    }
+    if (foodImages.length === 0) {
+      showAlert('请先添加图片', '拍照或从相册添加图片后，再进行 AI 识别。');
+      return;
+    }
+    showAlert(
+      '开始 AI 识别？',
+      'AI 会根据当前图片重新生成下面的食物记录，并覆盖已经填写好的食物数据。确定继续吗？',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '确定识别',
+          style: 'destructive',
+          onPress: () => {
+            void recognizeCurrentImages();
+          },
+        },
+      ],
+    );
+  };
+
+  const resetDraft = () => {
+    for (const image of foodImages) {
+      void deleteStoredPhoto(image.storedUri);
+    }
+    setFoodImages([]);
+    setItems([]);
+    setMealTitle('');
+    setNotes('');
+    setCatalogSavingId(undefined);
+    setEatenAt(new Date());
+    setMealType(inferMealTypeFromDate());
+  };
+
+  const handleReset = () => {
+    if (busy || saving) {
+      return;
+    }
+    if (!hasDraftContent) {
+      resetDraft();
+      return;
+    }
+    showAlert('重置当前记录？', '会清空当前未保存的图片、食物、标题和备注。', [
+      { text: '取消', style: 'cancel' },
+      { text: '重置', style: 'destructive', onPress: resetDraft },
+    ]);
   };
 
   const updateItem = (index: number, nextItem: MealItemDraft) => {
@@ -190,18 +286,20 @@ export default function RecordScreen() {
     setSaving(true);
     try {
       await saveMeal(db, {
-        eatenAt: new Date().toISOString(),
+        eatenAt: eatenAt.toISOString(),
         mealType,
         title: resolveMealTitle(mealTitle, items),
-        photoUri,
+        photoUris: foodImages.map((image) => image.storedUri),
         notes: notes.trim() || undefined,
         items,
       });
       await syncTodayNutritionWidget(db);
       setItems([]);
       setMealTitle('');
-      setPhotoUri(undefined);
+      setFoodImages([]);
       setNotes('');
+      setCatalogSavingId(undefined);
+      setEatenAt(new Date());
       showAlert('已保存', '本餐记录已写入本机。', [
         { text: '查看今日', onPress: () => router.replace('/(tabs)') },
       ]);
@@ -213,21 +311,33 @@ export default function RecordScreen() {
   };
 
   const totals = sumMacros(items);
-  const displayPhotoUri = resolveStoredPhotoUri(photoUri);
+  const displayPhotos: PhotoGalleryItem[] = foodImages.flatMap((image) => {
+    const uri = resolveStoredPhotoUri(image.storedUri);
+    return uri ? [{ uri, width: image.width, height: image.height }] : [];
+  });
 
   return (
-    <Screen>
+    <Screen stickyHeaderKeys={items.length > 0 ? ['meal-total-summary'] : undefined}>
       <View style={styles.header}>
-        <View style={styles.titleIcon}>
-          <Ionicons name="scan" size={22} color={theme.colors.primary} />
+        <View style={styles.headerTitleGroup}>
+          <View style={styles.titleIcon}>
+            <Ionicons name="scan" size={22} color={theme.colors.primary} />
+          </View>
+          <Text style={styles.title}>记录一餐</Text>
         </View>
-        <Text style={styles.title}>记录一餐</Text>
+        <HeaderIconButton
+          accessibilityLabel="重置当前记录"
+          icon="refresh-outline"
+          onPress={handleReset}
+          disabled={busy || saving}
+        />
       </View>
 
       <ChoiceChips
         value={mealType}
         onChange={setMealType}
         adaptive
+        columns={4}
         options={[
           { label: '早餐', value: 'breakfast', icon: 'sunny-outline' },
           { label: '午餐', value: 'lunch', icon: 'restaurant-outline' },
@@ -235,6 +345,10 @@ export default function RecordScreen() {
           { label: '加餐', value: 'snack', icon: 'cafe-outline' },
         ]}
       />
+
+      <Card variant="base" style={styles.timeCard}>
+        <MealDateTimePicker value={eatenAt} onChange={setEatenAt} />
+      </Card>
 
       <View style={styles.photoActions}>
         <PhotoButton
@@ -255,13 +369,28 @@ export default function RecordScreen() {
       {busy ? (
         <Card variant="prominent" style={styles.processing}>
           <View style={styles.processingIcon}>
-            <Ionicons name="scan-outline" size={24} color="#FFFFFF" />
+            <Ionicons
+              name={processing === 'preparing' ? 'image-outline' : 'scan-outline'}
+              size={24}
+              color="#FFFFFF"
+            />
           </View>
-          <Text style={styles.processingTitle}>正在识别食物与份量</Text>
+          <Text style={styles.processingTitle}>
+            {processing === 'preparing' ? '正在处理图片' : '正在识别食物与份量'}
+          </Text>
         </Card>
       ) : null}
 
-      {displayPhotoUri ? <Image source={{ uri: displayPhotoUri }} style={styles.photo} /> : null}
+      <PhotoGallery photos={displayPhotos} onRemovePhoto={handleRemovePhoto} />
+
+      <AppButton
+        label="AI 识别当前图片"
+        icon="sparkles-outline"
+        onPress={handleRecognizeImages}
+        variant="secondary"
+        loading={processing === 'recognizing'}
+        disabled={busy || foodImages.length === 0}
+      />
 
       {items.length > 0 ? (
         <View style={styles.mealTitleWrap}>
@@ -291,6 +420,12 @@ export default function RecordScreen() {
         </Pressable>
       </View>
 
+      {items.length > 0 ? (
+        <View key="meal-total-summary" style={styles.stickyTotalWrap}>
+          <MealTotalSummary totals={totals} />
+        </View>
+      ) : null}
+
       {items.length === 0 ? (
         <View style={styles.empty}>
           <View style={styles.emptyIcon}>
@@ -312,21 +447,6 @@ export default function RecordScreen() {
           />
         ))
       )}
-
-      {items.length > 0 ? (
-        <View style={styles.totalCard}>
-          <View style={styles.totalVisual}>
-            <Ionicons name="flash" size={18} color={theme.colors.accent} />
-            <View style={styles.totalStrip}>
-              <MacroStrip protein={totals.protein} carbs={totals.carbs} fat={totals.fat} />
-            </View>
-          </View>
-          <View style={styles.totalRight}>
-            <Text style={styles.totalCalories}>{Math.round(totals.calories)}</Text>
-            <Text style={styles.totalUnit}>kcal</Text>
-          </View>
-        </View>
-      ) : null}
 
       <View style={styles.notesWrap}>
         <Ionicons name="create-outline" size={19} color={theme.colors.textMuted} />
@@ -390,9 +510,16 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 12,
     marginTop: 2,
     paddingBottom: 2,
+  },
+  headerTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flexShrink: 1,
   },
   titleIcon: {
     width: 42,
@@ -411,6 +538,9 @@ const styles = StyleSheet.create({
   photoActions: {
     flexDirection: 'row',
     gap: 10,
+  },
+  timeCard: {
+    paddingVertical: 14,
   },
   photoButton: {
     flex: 1,
@@ -475,16 +605,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
   },
-  photo: {
-    width: '100%',
-    height: 250,
-    borderRadius: theme.radius.large,
-    borderCurve: 'continuous',
-    backgroundColor: theme.colors.surfaceMuted,
-    borderWidth: 1,
-    borderColor: '#FFFFFF',
-    boxShadow: theme.shadows.medium,
-  },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -547,41 +667,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '900',
   },
-  totalCard: {
-    backgroundColor: theme.colors.ink,
-    borderRadius: 18,
-    borderCurve: 'continuous',
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 18,
-    boxShadow: theme.shadows.large,
-  },
-  totalVisual: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  totalStrip: {
-    flex: 1,
-  },
-  totalCalories: {
-    color: '#FFFFFF',
-    fontSize: 34,
-    lineHeight: 36,
-    fontWeight: '900',
-    fontVariant: ['tabular-nums'],
-  },
-  totalRight: {
-    alignItems: 'flex-end',
-  },
-  totalUnit: {
-    color: '#AEB9CD',
-    fontSize: 10,
-    fontWeight: '800',
+  stickyTotalWrap: {
+    backgroundColor: 'transparent',
+    paddingVertical: 8,
+    zIndex: 4,
   },
   notesWrap: {
     minHeight: 52,

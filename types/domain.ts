@@ -79,6 +79,7 @@ export interface MealRecord {
   mealType: MealType;
   title?: string;
   photoUri?: string;
+  photoUris?: string[];
   notes?: string;
   items: MealItemDraft[];
   totals: MacroValues;
@@ -122,5 +123,12 @@ export interface AIRecognizedFood {
 export interface FoodRecognitionResult {
   mealTitle?: string;
   foods: AIRecognizedFood[];
+  warnings: string[];
+}
+
+export interface NutritionInsightAdvice {
+  title: string;
+  summary: string;
+  actions: string[];
   warnings: string[];
 }

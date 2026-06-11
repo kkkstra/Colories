@@ -10,22 +10,111 @@ import { MacroStrip } from '@/components/ui/MacroStrip';
 import { Screen } from '@/components/ui/Screen';
 import { theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
+import { generateNutritionInsightAdvice } from '@/lib/ai';
 import { formatChineseDate, recentDateKeys } from '@/lib/date';
-import { getDayTotals, type DaySummary } from '@/lib/database';
+import {
+  getCachedInsightAdvice,
+  getDayTotals,
+  saveCachedInsightAdvice,
+  type CachedInsightAdvice,
+  type DaySummary,
+} from '@/lib/database';
+import {
+  buildInsightAdviceData,
+  buildInsightAdviceDataHash,
+  INSIGHT_ADVICE_CACHE_ID,
+} from '@/lib/insightAdvice';
+import { getApiKey } from '@/lib/secureStorage';
 
 export default function InsightsScreen() {
   const db = useSQLiteContext();
-  const { loading, profile, targets } = useApp();
+  const { loading, profile, targets, providerConfig, hasApiKey } = useApp();
   const dates = useMemo(() => recentDateKeys(7), []);
   const [summaries, setSummaries] = useState<DaySummary[]>([]);
   const [refreshing, setRefreshing] = useState(true);
+  const [advice, setAdvice] = useState<CachedInsightAdvice | null>(null);
+  const [adviceLoading, setAdviceLoading] = useState(false);
+  const [adviceMessage, setAdviceMessage] = useState<string | null>(null);
+
+  const loadAdvice = useCallback(
+    async (nextSummaries: DaySummary[]) => {
+      if (!targets) {
+        setAdvice(null);
+        setAdviceLoading(false);
+        setAdviceMessage('设置目标后生成建议。');
+        return;
+      }
+      const adviceData = buildInsightAdviceData(nextSummaries);
+      if (adviceData.recordedDays.length === 0) {
+        setAdvice(null);
+        setAdviceLoading(false);
+        setAdviceMessage('开始记录饮食后，这里会根据最近 7 天给建议。');
+        return;
+      }
+
+      const dataHash = buildInsightAdviceDataHash(nextSummaries, targets);
+      const cached = await getCachedInsightAdvice(db, INSIGHT_ADVICE_CACHE_ID);
+      if (cached?.dataHash === dataHash) {
+        setAdvice(cached);
+        setAdviceLoading(false);
+        setAdviceMessage(null);
+        return;
+      }
+
+      setAdvice(null);
+      if (!providerConfig || !hasApiKey) {
+        setAdviceLoading(false);
+        setAdviceMessage('配置 AI 后，根据最近 7 天记录生成建议。');
+        return;
+      }
+
+      const apiKey = await getApiKey();
+      if (!apiKey) {
+        setAdviceLoading(false);
+        setAdviceMessage('配置 AI 后，根据最近 7 天记录生成建议。');
+        return;
+      }
+
+      setAdviceLoading(true);
+      setAdviceMessage(null);
+      try {
+        const nextAdvice = await generateNutritionInsightAdvice(providerConfig, apiKey, {
+          targets,
+          days: adviceData.recordedDays,
+          periodDays: adviceData.periodDays,
+          missingDays: adviceData.missingDays,
+        });
+        const savedAdvice = await saveCachedInsightAdvice(db, {
+          id: INSIGHT_ADVICE_CACHE_ID,
+          dataHash,
+          ...nextAdvice,
+        });
+        setAdvice(savedAdvice);
+        setAdviceMessage(null);
+      } catch {
+        setAdvice(cached);
+        setAdviceMessage(
+          cached ? '数据已变化，当前显示上次建议。' : 'AI 建议暂时没生成，稍后再试。',
+        );
+      } finally {
+        setAdviceLoading(false);
+      }
+    },
+    [db, hasApiKey, providerConfig, targets],
+  );
 
   const load = useCallback(async () => {
     setRefreshing(true);
-    const nextSummaries = await Promise.all(dates.map((dateKey) => getDayTotals(db, dateKey)));
-    setSummaries(nextSummaries);
-    setRefreshing(false);
-  }, [dates, db]);
+    try {
+      const nextSummaries = await Promise.all(dates.map((dateKey) => getDayTotals(db, dateKey)));
+      setSummaries(nextSummaries);
+      setRefreshing(false);
+      await loadAdvice(nextSummaries);
+    } catch {
+      setRefreshing(false);
+      setAdviceLoading(false);
+    }
+  }, [dates, db, loadAdvice]);
 
   useFocusEffect(
     useCallback(() => {
@@ -85,6 +174,49 @@ export default function InsightsScreen() {
           </View>
         </View>
         <EnergyRail value={averageCalories} target={calorieTarget} />
+      </Card>
+
+      <Card variant="base" style={styles.adviceCard}>
+        <View style={styles.adviceHeader}>
+          <View style={styles.adviceHeading}>
+            <View style={styles.adviceIcon}>
+              <Ionicons name="sparkles-outline" size={17} color={theme.colors.primary} />
+            </View>
+            <Text style={styles.adviceLabel}>AI 建议</Text>
+          </View>
+          <Text style={styles.adviceRefreshLabel}>数据变化时更新</Text>
+        </View>
+
+        {adviceLoading ? (
+          <View style={styles.adviceLoading}>
+            <ActivityIndicator color={theme.colors.primary} size="small" />
+            <Text style={styles.adviceMuted}>正在根据最近 7 天生成建议</Text>
+          </View>
+        ) : advice ? (
+          <View style={styles.adviceBody}>
+            <Text style={styles.adviceTitle}>{advice.title}</Text>
+            <Text style={styles.adviceSummary}>{advice.summary}</Text>
+            <View style={styles.adviceActions}>
+              {advice.actions.map((action) => (
+                <View key={action} style={styles.adviceAction}>
+                  <Ionicons name="checkmark-circle" size={16} color={theme.colors.success} />
+                  <Text style={styles.adviceActionText}>{action}</Text>
+                </View>
+              ))}
+            </View>
+            {advice.warnings.map((warning) => (
+              <View key={warning} style={styles.adviceWarning}>
+                <Ionicons name="alert-circle" size={15} color={theme.colors.warning} />
+                <Text style={styles.adviceWarningText}>{warning}</Text>
+              </View>
+            ))}
+            {adviceMessage ? <Text style={styles.adviceMuted}>{adviceMessage}</Text> : null}
+          </View>
+        ) : (
+          <Text style={styles.adviceMuted}>
+            {adviceMessage ?? '有新的饮食记录后，这里会给出更具体的建议。'}
+          </Text>
+        )}
       </Card>
 
       <View style={styles.chartCard}>
@@ -213,6 +345,100 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontSize: 11,
     fontWeight: '900',
+  },
+  adviceCard: {
+    gap: 12,
+  },
+  adviceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  adviceHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 1,
+  },
+  adviceIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 11,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.primaryWash,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adviceLabel: {
+    color: theme.colors.text,
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  adviceRefreshLabel: {
+    color: theme.colors.textFaint,
+    fontSize: 11,
+    fontWeight: '800',
+    flexShrink: 0,
+  },
+  adviceBody: {
+    gap: 9,
+  },
+  adviceTitle: {
+    color: theme.colors.text,
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  adviceSummary: {
+    color: theme.colors.textMuted,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 20,
+  },
+  adviceActions: {
+    gap: 8,
+    paddingTop: 2,
+  },
+  adviceAction: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  adviceActionText: {
+    color: theme.colors.text,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '800',
+    lineHeight: 19,
+  },
+  adviceWarning: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 7,
+    borderRadius: 12,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.warningSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  adviceWarningText: {
+    color: theme.colors.warning,
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '800',
+    lineHeight: 18,
+  },
+  adviceLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 38,
+  },
+  adviceMuted: {
+    color: theme.colors.textMuted,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 20,
   },
   chartCard: {
     borderRadius: theme.radius.large,

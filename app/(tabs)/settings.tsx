@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { Card } from '@/components/ui/Card';
+import { ChoiceChips } from '@/components/ui/ChoiceChips';
 import { FormField } from '@/components/ui/FormField';
 import { Screen } from '@/components/ui/Screen';
 import { theme } from '@/constants/Theme';
@@ -17,14 +18,42 @@ import {
 import { showAlert } from '@/lib/alert';
 import { calculateTargets } from '@/lib/nutrition';
 import { clearApiKey, getApiKey } from '@/lib/secureStorage';
-import type { DailyTargets } from '@/types/domain';
+import type { DailyTargets, UserProfile } from '@/types/domain';
 
 type ProviderFeedback = {
   tone: 'info' | 'success' | 'error';
   message: string;
 };
 
-type ExpandedSection = 'provider' | 'targets' | null;
+type ExpandedSection = 'profile' | 'provider' | 'targets' | null;
+
+const DEFAULT_PROFILE: UserProfile = {
+  age: 28,
+  heightCm: 170,
+  weightKg: 65,
+  sex: 'male',
+  activityLevel: 'moderate',
+  goal: 'maintain',
+};
+
+const SEX_OPTIONS = [
+  { label: '男性', value: 'male', icon: 'male' },
+  { label: '女性', value: 'female', icon: 'female' },
+] as const;
+
+const ACTIVITY_OPTIONS = [
+  { label: '久坐', value: 'sedentary', icon: 'desktop-outline' },
+  { label: '轻度', value: 'light', icon: 'walk-outline' },
+  { label: '常规', value: 'moderate', icon: 'barbell-outline' },
+  { label: '高强度', value: 'active', icon: 'flame-outline' },
+  { label: '运动员', value: 'very_active', icon: 'trophy-outline' },
+] as const;
+
+const GOAL_OPTIONS = [
+  { label: '减脂', value: 'cut', icon: 'trending-down' },
+  { label: '维持', value: 'maintain', icon: 'remove' },
+  { label: '增肌', value: 'gain', icon: 'trending-up' },
+] as const;
 
 export default function SettingsScreen() {
   const {
@@ -34,6 +63,7 @@ export default function SettingsScreen() {
     hasApiKey,
     refresh,
     persistProvider,
+    persistProfile,
     persistTargets,
   } = useApp();
   const [baseUrl, setBaseUrl] = useState(providerConfig?.baseUrl ?? DASHSCOPE_PRESET.baseUrl);
@@ -44,7 +74,9 @@ export default function SettingsScreen() {
   const [targetDraft, setTargetDraft] = useState<DailyTargets>(
     targets ?? { calories: 2000, protein: 130, carbs: 240, fat: 60 },
   );
+  const [profileDraft, setProfileDraft] = useState<UserProfile>(profile ?? DEFAULT_PROFILE);
   const [savingTargets, setSavingTargets] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
   const [expandedSection, setExpandedSection] = useState<ExpandedSection>(
     hasApiKey ? null : 'provider',
   );
@@ -61,6 +93,12 @@ export default function SettingsScreen() {
       setTargetDraft(targets);
     }
   }, [targets]);
+
+  useEffect(() => {
+    if (profile) {
+      setProfileDraft(profile);
+    }
+  }, [profile]);
 
   const useDashScopePreset = () => {
     setBaseUrl(DASHSCOPE_PRESET.baseUrl);
@@ -126,6 +164,74 @@ export default function SettingsScreen() {
     }));
   };
 
+  const updateProfileNumber = (key: 'age' | 'heightCm' | 'weightKg', value: string) => {
+    const parsed = Number(value);
+    setProfileDraft((current) => ({
+      ...current,
+      [key]: Number.isFinite(parsed) ? Math.max(0, parsed) : 0,
+    }));
+  };
+
+  const updateProfileChoice = <K extends 'sex' | 'activityLevel' | 'goal'>(
+    key: K,
+    value: UserProfile[K],
+  ) => {
+    setProfileDraft((current) => ({ ...current, [key]: value }));
+  };
+
+  const saveProfileWithTargets = async (
+    nextProfile: UserProfile,
+    nextTargets: DailyTargets,
+    message: string,
+  ) => {
+    setSavingProfile(true);
+    try {
+      await persistProfile(nextProfile, nextTargets);
+      setTargetDraft(nextTargets);
+      setExpandedSection(null);
+      showAlert(message);
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleSaveProfile = () => {
+    if (
+      profileDraft.age < 10 ||
+      profileDraft.age > 100 ||
+      profileDraft.heightCm < 80 ||
+      profileDraft.heightCm > 240 ||
+      profileDraft.weightKg < 25 ||
+      profileDraft.weightKg > 300
+    ) {
+      showAlert('请检查身体信息', '年龄、身高或体重超出合理范围。');
+      return;
+    }
+
+    const recommendedTargets = calculateTargets(profileDraft);
+    showAlert(
+      '重新制定目标？',
+      `根据新的身体信息，推荐目标为：${Math.round(recommendedTargets.calories)} kcal，蛋白质 ${Math.round(recommendedTargets.protein)}g，碳水 ${Math.round(recommendedTargets.carbs)}g，脂肪 ${Math.round(recommendedTargets.fat)}g。`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '只保存身体',
+          onPress: () =>
+            saveProfileWithTargets(
+              profileDraft,
+              targets ?? targetDraft,
+              '身体信息已更新，目标保持不变。',
+            ),
+        },
+        {
+          text: '使用推荐目标',
+          onPress: () =>
+            saveProfileWithTargets(profileDraft, recommendedTargets, '身体和推荐目标已更新。'),
+        },
+      ],
+    );
+  };
+
   const handleSaveTargets = async () => {
     setSavingTargets(true);
     try {
@@ -147,9 +253,178 @@ export default function SettingsScreen() {
     setExpandedSection((current) => (current === section ? null : section));
   };
 
+  const recommendedTargets = calculateTargets(profileDraft);
+
   return (
     <Screen>
       <Text style={styles.title}>设置</Text>
+
+      <Card style={styles.sectionCard}>
+        <SectionSummary
+          icon="person"
+          title="身体"
+          value={`${profileDraft.age} 岁 · ${profileDraft.heightCm} cm · ${profileDraft.weightKg} kg`}
+          expanded={expandedSection === 'profile'}
+          onPress={() => toggleSection('profile')}
+        />
+
+        <View style={styles.profileSummary}>
+          <TargetMetric label="岁" value={profileDraft.age} color={theme.colors.primary} />
+          <TargetMetric label="cm" value={profileDraft.heightCm} color={theme.colors.protein} />
+          <TargetMetric label="kg" value={profileDraft.weightKg} color={theme.colors.fat} />
+          <TargetMetric
+            label="目标"
+            value={recommendedTargets.calories}
+            color={theme.colors.carbs}
+          />
+        </View>
+
+        {expandedSection === 'profile' ? (
+          <View style={styles.sectionBody}>
+            <View style={styles.profileGrid}>
+              <View style={styles.profileFieldFull}>
+                <FormField
+                  label="年龄"
+                  value={String(profileDraft.age)}
+                  onChangeText={(value) => updateProfileNumber('age', value)}
+                  keyboardType="number-pad"
+                  selectTextOnFocus
+                />
+              </View>
+              <View style={styles.profileFieldHalf}>
+                <FormField
+                  label="身高 cm"
+                  value={String(profileDraft.heightCm)}
+                  onChangeText={(value) => updateProfileNumber('heightCm', value)}
+                  keyboardType="decimal-pad"
+                  selectTextOnFocus
+                />
+              </View>
+              <View style={styles.profileFieldHalf}>
+                <FormField
+                  label="体重 kg"
+                  value={String(profileDraft.weightKg)}
+                  onChangeText={(value) => updateProfileNumber('weightKg', value)}
+                  keyboardType="decimal-pad"
+                  selectTextOnFocus
+                />
+              </View>
+            </View>
+
+            <View style={styles.choiceGroup}>
+              <Text style={styles.groupLabel}>性别</Text>
+              <ChoiceChips
+                value={profileDraft.sex}
+                onChange={(value) => updateProfileChoice('sex', value)}
+                options={SEX_OPTIONS}
+              />
+            </View>
+            <View style={styles.choiceGroup}>
+              <Text style={styles.groupLabel}>活动</Text>
+              <ChoiceChips
+                value={profileDraft.activityLevel}
+                onChange={(value) => updateProfileChoice('activityLevel', value)}
+                options={ACTIVITY_OPTIONS}
+              />
+            </View>
+            <View style={styles.choiceGroup}>
+              <Text style={styles.groupLabel}>目标</Text>
+              <ChoiceChips
+                value={profileDraft.goal}
+                onChange={(value) => updateProfileChoice('goal', value)}
+                options={GOAL_OPTIONS}
+              />
+            </View>
+
+            <View style={styles.recommendedBox}>
+              <Text style={styles.recommendedTitle}>推荐目标</Text>
+              <View style={styles.targetSummaryCompact}>
+                <TargetMetric label="热" value={recommendedTargets.calories} color={theme.colors.primary} />
+                <TargetMetric label="蛋" value={recommendedTargets.protein} color={theme.colors.protein} />
+                <TargetMetric label="碳" value={recommendedTargets.carbs} color={theme.colors.carbs} />
+                <TargetMetric label="脂" value={recommendedTargets.fat} color={theme.colors.fat} />
+              </View>
+            </View>
+
+            <AppButton
+              label="保存身体信息"
+              icon="checkmark"
+              onPress={handleSaveProfile}
+              loading={savingProfile}
+            />
+          </View>
+        ) : null}
+      </Card>
+
+      <Card style={styles.sectionCard}>
+        <SectionSummary
+          icon="speedometer"
+          title="每日目标"
+          value={`${Math.round(targetDraft.calories)} kcal`}
+          expanded={expandedSection === 'targets'}
+          onPress={() => toggleSection('targets')}
+        />
+
+        <View style={styles.targetSummary}>
+          <TargetMetric label="热" value={targetDraft.calories} color={theme.colors.primary} />
+          <TargetMetric label="蛋" value={targetDraft.protein} color={theme.colors.protein} />
+          <TargetMetric label="碳" value={targetDraft.carbs} color={theme.colors.carbs} />
+          <TargetMetric label="脂" value={targetDraft.fat} color={theme.colors.fat} />
+        </View>
+
+        {expandedSection === 'targets' ? (
+          <View style={styles.sectionBody}>
+            <View style={styles.targetGrid}>
+              <TargetField
+                label="热量 kcal"
+                value={targetDraft.calories}
+                onChange={(value) => updateTarget('calories', value)}
+              />
+              <TargetField
+                label="蛋白质 g"
+                value={targetDraft.protein}
+                onChange={(value) => updateTarget('protein', value)}
+              />
+              <TargetField
+                label="碳水 g"
+                value={targetDraft.carbs}
+                onChange={(value) => updateTarget('carbs', value)}
+              />
+              <TargetField
+                label="脂肪 g"
+                value={targetDraft.fat}
+                onChange={(value) => updateTarget('fat', value)}
+              />
+            </View>
+            <View style={styles.targetActions}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={resetTargets}
+                style={styles.resetButton}
+              >
+                <Ionicons name="refresh" size={17} color={theme.colors.primary} />
+                <Text style={styles.resetText}>重算</Text>
+              </Pressable>
+              <View style={styles.saveTargetButton}>
+                <AppButton
+                  label="保存目标"
+                  onPress={handleSaveTargets}
+                  loading={savingTargets}
+                />
+              </View>
+            </View>
+          </View>
+        ) : null}
+      </Card>
+
+      <Card style={styles.sectionCard}>
+        <NavigationSummary
+          icon="library-outline"
+          title="食物库"
+          value="预置来源可追溯，也可维护自己的食物"
+          onPress={() => router.push('/food-library')}
+        />
+      </Card>
 
       <Card style={styles.sectionCard}>
         <SectionSummary
@@ -265,96 +540,6 @@ export default function SettingsScreen() {
           </View>
         ) : null}
       </Card>
-
-      <Card style={styles.sectionCard}>
-        <SectionSummary
-          icon="speedometer"
-          title="每日目标"
-          value={`${Math.round(targetDraft.calories)} kcal`}
-          expanded={expandedSection === 'targets'}
-          onPress={() => toggleSection('targets')}
-        />
-
-        <View style={styles.targetSummary}>
-          <TargetMetric label="热" value={targetDraft.calories} color={theme.colors.primary} />
-          <TargetMetric label="蛋" value={targetDraft.protein} color={theme.colors.protein} />
-          <TargetMetric label="碳" value={targetDraft.carbs} color={theme.colors.carbs} />
-          <TargetMetric label="脂" value={targetDraft.fat} color={theme.colors.fat} />
-        </View>
-
-        {expandedSection === 'targets' ? (
-          <View style={styles.sectionBody}>
-            <View style={styles.targetGrid}>
-              <TargetField
-                label="热量 kcal"
-                value={targetDraft.calories}
-                onChange={(value) => updateTarget('calories', value)}
-              />
-              <TargetField
-                label="蛋白质 g"
-                value={targetDraft.protein}
-                onChange={(value) => updateTarget('protein', value)}
-              />
-              <TargetField
-                label="碳水 g"
-                value={targetDraft.carbs}
-                onChange={(value) => updateTarget('carbs', value)}
-              />
-              <TargetField
-                label="脂肪 g"
-                value={targetDraft.fat}
-                onChange={(value) => updateTarget('fat', value)}
-              />
-            </View>
-            <View style={styles.targetActions}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={resetTargets}
-                style={styles.resetButton}
-              >
-                <Ionicons name="refresh" size={17} color={theme.colors.primary} />
-                <Text style={styles.resetText}>重算</Text>
-              </Pressable>
-              <View style={styles.saveTargetButton}>
-                <AppButton
-                  label="保存目标"
-                  onPress={handleSaveTargets}
-                  loading={savingTargets}
-                />
-              </View>
-            </View>
-          </View>
-        ) : null}
-      </Card>
-
-      <Card style={styles.sectionCard}>
-        <NavigationSummary
-          icon="library-outline"
-          title="食物库"
-          value="预置来源可追溯，也可维护自己的食物"
-          onPress={() => router.push('/food-library')}
-        />
-      </Card>
-
-      {profile ? (
-        <Card style={styles.profileCard}>
-          <View style={styles.profileHeader}>
-            <View style={styles.profileIcon}>
-              <Ionicons name="person-outline" size={20} color="#FFFFFF" />
-            </View>
-            <Text style={styles.profileTitle}>身体</Text>
-          </View>
-          <View style={styles.profileStats}>
-            <ProfileStat label="岁" value={`${profile.age}`} />
-            <ProfileStat label="cm" value={`${profile.heightCm}`} />
-            <ProfileStat label="kg" value={`${profile.weightKg}`} />
-            <ProfileStat
-              label="目标"
-              value={profile.goal === 'cut' ? '减脂' : profile.goal === 'gain' ? '增肌' : '维持'}
-            />
-          </View>
-        </Card>
-      ) : null}
 
       <View style={styles.privacySection}>
         <Text style={styles.privacyTitle}>数据与隐私</Text>
@@ -494,15 +679,6 @@ function TargetMetric({
       <View style={[styles.targetDot, { backgroundColor: color }]} />
       <Text style={styles.targetMetricLabel}>{label}</Text>
       <Text style={styles.targetMetricValue}>{Math.round(value)}</Text>
-    </View>
-  );
-}
-
-function ProfileStat({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.profileStat}>
-      <Text style={styles.profileStatValue}>{value}</Text>
-      <Text style={styles.profileStatLabel}>{label}</Text>
     </View>
   );
 }
@@ -674,6 +850,51 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     paddingVertical: 4,
   },
+  profileSummary: {
+    flexDirection: 'row',
+    gap: 7,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  profileGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    paddingTop: 16,
+  },
+  profileFieldFull: {
+    width: '100%',
+  },
+  profileFieldHalf: {
+    flex: 1,
+    minWidth: 0,
+  },
+  choiceGroup: {
+    gap: 8,
+  },
+  groupLabel: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  recommendedBox: {
+    gap: 10,
+    borderRadius: 14,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.surfaceTint,
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+    padding: 12,
+  },
+  recommendedTitle: {
+    color: theme.colors.text,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  targetSummaryCompact: {
+    flexDirection: 'row',
+    gap: 7,
+  },
   targetSummary: {
     flexDirection: 'row',
     gap: 7,
@@ -742,53 +963,6 @@ const styles = StyleSheet.create({
   },
   saveTargetButton: {
     flex: 1,
-  },
-  profileCard: {
-    backgroundColor: theme.colors.ink,
-    borderColor: theme.colors.ink,
-    gap: 16,
-    boxShadow: theme.shadows.large,
-  },
-  profileHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  profileIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 13,
-    backgroundColor: theme.colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profileTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  profileStats: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  profileStat: {
-    flex: 1,
-    minWidth: 0,
-    alignItems: 'center',
-    paddingTop: 10,
-    borderTopWidth: 3,
-    borderTopColor: theme.colors.primary,
-  },
-  profileStatValue: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '900',
-    fontVariant: ['tabular-nums'],
-  },
-  profileStatLabel: {
-    color: '#98A2B3',
-    fontSize: 9,
-    marginTop: 3,
   },
   privacySection: {
     gap: 12,

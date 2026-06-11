@@ -11,6 +11,16 @@ export function normalizeMealPhotoReference(uri: string | undefined): string | u
   return extractMealPhotoReference(uri) ?? uri;
 }
 
+export function normalizeMealPhotoReferences(uris: readonly string[] | undefined): string[] {
+  if (!uris) {
+    return [];
+  }
+  const normalized = uris
+    .map((uri) => normalizeMealPhotoReference(uri))
+    .filter((uri): uri is string => Boolean(uri));
+  return Array.from(new Set(normalized));
+}
+
 export function extractMealPhotoReference(uri: string): string | undefined {
   const marker = `${MEAL_PHOTO_DIRECTORY}/`;
   if (uri.startsWith(marker)) {

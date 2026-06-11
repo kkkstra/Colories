@@ -1,4 +1,5 @@
 import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
 import { SQLiteProvider } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -16,6 +17,11 @@ export const unstable_settings = {
 };
 
 const COMPACT_HEADER_ROUTES = new Set(['select-food', 'edit-food', 'edit-meal']);
+
+SplashScreen.setOptions({
+  duration: 420,
+  fade: true,
+});
 
 export default function RootLayout() {
   const navigationTheme = {
@@ -40,6 +46,7 @@ export default function RootLayout() {
                   <AppHeader
                     title={resolveHeaderTitle(options)}
                     compactTopInset={COMPACT_HEADER_ROUTES.has(route.name)}
+                    headerRight={options.headerRight}
                   />
                 ),
               }}
@@ -50,6 +57,7 @@ export default function RootLayout() {
                 options={{ headerShown: false, gestureEnabled: false }}
               />
               <Stack.Screen name="food-library" options={{ title: '食物库' }} />
+              <Stack.Screen name="food-detail" options={{ title: '食物详情' }} />
               <Stack.Screen name="edit-food" options={{ title: '食物', presentation: 'modal' }} />
               <Stack.Screen name="select-food" options={{ title: '添加食物', presentation: 'modal' }} />
               <Stack.Screen name="edit-meal" options={{ title: '编辑记录', presentation: 'modal' }} />

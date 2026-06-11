@@ -1,10 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, useLocalSearchParams } from 'expo-router';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
-import { AppButton } from '@/components/ui/AppButton';
+import { HeaderIconButton } from '@/components/ui/AppHeader';
 import { Card } from '@/components/ui/Card';
 import { ChoiceChips } from '@/components/ui/ChoiceChips';
 import { FormField } from '@/components/ui/FormField';
@@ -161,98 +161,123 @@ export default function EditFoodScreen() {
   };
 
   return (
-    <Screen topSafe={false} contentContainerStyle={styles.screen}>
-      <Card variant="prominent" style={styles.formCard}>
-        <View style={styles.formTitleRow}>
-          <View style={styles.titleMark}>
-            <Ionicons name={draft.id ? 'create-outline' : 'add'} size={22} color={theme.colors.primary} />
+    <>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <View style={styles.headerActions}>
+              {draft.id ? (
+                <HeaderIconButton
+                  accessibilityLabel="删除食物"
+                  icon="trash-outline"
+                  onPress={confirmDelete}
+                  variant="danger"
+                />
+              ) : null}
+              <HeaderIconButton
+                accessibilityLabel="保存食物"
+                icon="checkmark"
+                loading={saving}
+                onPress={handleSave}
+                variant="primary"
+              />
+            </View>
+          ),
+        }}
+      />
+      <Screen topSafe={false} contentContainerStyle={styles.screen}>
+        <Card variant="prominent" style={styles.formCard}>
+          <View style={styles.formTitleRow}>
+            <View style={styles.titleMark}>
+              <Ionicons
+                name={draft.id ? 'create-outline' : 'add'}
+                size={22}
+                color={theme.colors.primary}
+              />
+            </View>
+            <View style={styles.titleCopy}>
+              <Text style={styles.formTitle}>
+                {loading
+                  ? '读取食物…'
+                  : draft.id
+                    ? '编辑我的食物'
+                    : sourceId
+                      ? '复制为我的食物'
+                      : '新增自定义食物'}
+              </Text>
+              <Text style={styles.formSubtitle}>营养值按每 100g/ml 维护</Text>
+            </View>
           </View>
-          <View style={styles.titleCopy}>
-            <Text style={styles.formTitle}>
-              {loading ? '读取食物…' : draft.id ? '编辑我的食物' : sourceId ? '复制为我的食物' : '新增自定义食物'}
-            </Text>
-            <Text style={styles.formSubtitle}>营养值按每 100g/ml 维护</Text>
-          </View>
-        </View>
 
-        <FormField
-          label="名称"
-          value={draft.nameZh}
-          onChangeText={(value) => updateDraft('nameZh', value)}
-          placeholder="例如：公司食堂鸡腿饭"
-        />
-        <FormField
-          label="英文名 / 品牌（可选）"
-          value={draft.nameEn}
-          onChangeText={(value) => updateDraft('nameEn', value)}
-          placeholder="用于搜索和备注"
-        />
-        <View style={styles.formGroup}>
-          <Text style={styles.groupLabel}>分类</Text>
-          <ChoiceChips
-            value={draft.category}
-            onChange={(value) => updateDraft('category', value)}
-            options={FOOD_CATEGORY_OPTIONS.map((item) => ({
-              ...item,
-              icon: CATEGORY_ICONS[item.value],
-            }))}
-            adaptive
+          <FormField
+            label="名称"
+            value={draft.nameZh}
+            onChangeText={(value) => updateDraft('nameZh', value)}
+            placeholder="例如：公司食堂鸡腿饭"
           />
-        </View>
-        <FormField
-          label="烹饪方式（可选）"
-          value={draft.cookingMethod}
-          onChangeText={(value) => updateDraft('cookingMethod', value)}
-          placeholder="例如：蒸、煮、少油炒、空气炸"
-        />
-        <FormField
-          label="别名"
-          value={draft.aliasesText}
-          onChangeText={(value) => updateDraft('aliasesText', value)}
-          placeholder="用顿号或逗号分隔，例如：鸡腿盖饭、鸡肉饭"
-        />
-        <View style={styles.nutritionGrid}>
-          <NumberField
-            label="热量 kcal"
-            value={draft.calories}
-            onChange={(value) => updateNumber('calories', value)}
+          <FormField
+            label="英文名 / 品牌（可选）"
+            value={draft.nameEn}
+            onChangeText={(value) => updateDraft('nameEn', value)}
+            placeholder="用于搜索和备注"
           />
-          <NumberField
-            label="蛋白质 g"
-            value={draft.protein}
-            onChange={(value) => updateNumber('protein', value)}
-          />
-          <NumberField
-            label="碳水 g"
-            value={draft.carbs}
-            onChange={(value) => updateNumber('carbs', value)}
-          />
-          <NumberField
-            label="脂肪 g"
-            value={draft.fat}
-            onChange={(value) => updateNumber('fat', value)}
-          />
-        </View>
-        <FormField
-          label="来源"
-          value={draft.sourceReference}
-          onChangeText={(value) => updateDraft('sourceReference', value)}
-          placeholder="包装营养标签、品牌官网、食物成分表等"
-          multiline
-        />
-        <View style={styles.formActions}>
-          {draft.id ? (
-            <Pressable accessibilityRole="button" onPress={confirmDelete} style={styles.deleteButton}>
-              <Ionicons name="trash-outline" size={18} color={theme.colors.danger} />
-              <Text style={styles.deleteText}>删除</Text>
-            </Pressable>
-          ) : null}
-          <View style={styles.formSave}>
-            <AppButton label="保存食物" icon="checkmark" onPress={handleSave} loading={saving} />
+          <View style={styles.formGroup}>
+            <Text style={styles.groupLabel}>分类</Text>
+            <ChoiceChips
+              value={draft.category}
+              onChange={(value) => updateDraft('category', value)}
+              options={FOOD_CATEGORY_OPTIONS.map((item) => ({
+                ...item,
+                icon: CATEGORY_ICONS[item.value],
+              }))}
+              adaptive
+              columns={3}
+            />
           </View>
-        </View>
-      </Card>
-    </Screen>
+          <FormField
+            label="烹饪方式（可选）"
+            value={draft.cookingMethod}
+            onChangeText={(value) => updateDraft('cookingMethod', value)}
+            placeholder="例如：蒸、煮、少油炒、空气炸"
+          />
+          <FormField
+            label="别名"
+            value={draft.aliasesText}
+            onChangeText={(value) => updateDraft('aliasesText', value)}
+            placeholder="用顿号或逗号分隔，例如：鸡腿盖饭、鸡肉饭"
+          />
+          <View style={styles.nutritionGrid}>
+            <NumberField
+              label="热量 kcal"
+              value={draft.calories}
+              onChange={(value) => updateNumber('calories', value)}
+            />
+            <NumberField
+              label="蛋白质 g"
+              value={draft.protein}
+              onChange={(value) => updateNumber('protein', value)}
+            />
+            <NumberField
+              label="碳水 g"
+              value={draft.carbs}
+              onChange={(value) => updateNumber('carbs', value)}
+            />
+            <NumberField
+              label="脂肪 g"
+              value={draft.fat}
+              onChange={(value) => updateNumber('fat', value)}
+            />
+          </View>
+          <FormField
+            label="来源"
+            value={draft.sourceReference}
+            onChangeText={(value) => updateDraft('sourceReference', value)}
+            placeholder="包装营养标签、品牌官网、食物成分表等"
+            multiline
+          />
+        </Card>
+      </Screen>
+    </>
   );
 }
 
@@ -286,6 +311,11 @@ function splitAliases(value: string): string[] {
 }
 
 const styles = StyleSheet.create({
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   screen: {
     paddingTop: 14,
   },
@@ -340,30 +370,5 @@ const styles = StyleSheet.create({
   numberField: {
     width: '47%',
     flexGrow: 1,
-  },
-  formActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  deleteButton: {
-    minHeight: 52,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    borderCurve: 'continuous',
-    backgroundColor: theme.colors.accentSoft,
-    boxShadow: theme.shadows.small,
-  },
-  deleteText: {
-    color: theme.colors.danger,
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  formSave: {
-    flex: 1,
   },
 });

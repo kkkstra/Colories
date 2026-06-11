@@ -6,7 +6,12 @@ import {
   MIGRATION_V2_SQL,
   MIGRATION_V3_SQL,
   MIGRATION_V4_SQL,
+  MIGRATION_V5_SQL,
+  MIGRATION_V6_SQL,
+  getCachedInsightAdvice,
   migrateDatabase,
+  saveCachedInsightAdvice,
+  saveMeal,
   saveCustomFood,
   scoreFoodNameMatch,
   updateMeal,
@@ -21,14 +26,20 @@ describe('database migration', () => {
       'food_alias',
       'meals',
       'meal_items',
+      'meal_photos',
       'ai_provider_config',
+      'ai_insight_advice',
     ]) {
-      expect(MIGRATION_V1_SQL).toContain(`CREATE TABLE IF NOT EXISTS ${table}`);
+      expect(`${MIGRATION_V1_SQL}\n${MIGRATION_V5_SQL}\n${MIGRATION_V6_SQL}`).toContain(
+        `CREATE TABLE IF NOT EXISTS ${table}`,
+      );
     }
     expect(MIGRATION_V2_SQL).toContain('ADD COLUMN is_custom');
     expect(MIGRATION_V2_SQL).toContain('ADD COLUMN updated_at');
     expect(MIGRATION_V3_SQL).toContain('ADD COLUMN title');
     expect(MIGRATION_V4_SQL).toContain('ADD COLUMN cooking_method');
+    expect(MIGRATION_V5_SQL).toContain('INSERT INTO meal_photos');
+    expect(MIGRATION_V6_SQL).toContain('data_hash');
   });
 
   it('seeds catalog and advances user_version on a fresh database', async () => {
@@ -50,8 +61,77 @@ describe('database migration', () => {
     expect(execAsync).toHaveBeenCalledWith(MIGRATION_V2_SQL);
     expect(execAsync).toHaveBeenCalledWith(MIGRATION_V3_SQL);
     expect(execAsync).toHaveBeenCalledWith(MIGRATION_V4_SQL);
+    expect(execAsync).toHaveBeenCalledWith(MIGRATION_V5_SQL);
+    expect(execAsync).toHaveBeenCalledWith(MIGRATION_V6_SQL);
     expect(execAsync).toHaveBeenLastCalledWith(`PRAGMA user_version = ${DATABASE_VERSION}`);
     expect(runAsync.mock.calls.some(([sql]) => String(sql).includes('food_catalog'))).toBe(true);
+  });
+
+  it('caches weekly insight advice by data hash', async () => {
+    const runAsync = vi.fn().mockResolvedValue({ lastInsertRowId: 1, changes: 1 });
+    const db = {
+      getFirstAsync: vi.fn().mockResolvedValue({
+        id: 'weekly',
+        data_hash: 'hash-1',
+        title: '晚餐稳一点',
+        summary: '最近 7 天晚餐热量更高。',
+        actions_json: JSON.stringify(['主食固定一拳', '晚餐加蔬菜']),
+        warnings_json: JSON.stringify(['有一天未记录']),
+        updated_at: '2026-06-11T00:00:00.000Z',
+      }),
+      runAsync,
+    };
+
+    const saved = await saveCachedInsightAdvice(db as never, {
+      id: 'weekly',
+      dataHash: 'hash-1',
+      title: '晚餐稳一点',
+      summary: '最近 7 天晚餐热量更高。',
+      actions: ['主食固定一拳', '晚餐加蔬菜'],
+      warnings: ['有一天未记录'],
+    });
+    const cached = await getCachedInsightAdvice(db as never, 'weekly');
+
+    expect(saved.updatedAt).toMatch(/T/);
+    expect(runAsync.mock.calls[0][0]).toContain('ai_insight_advice');
+    expect(cached?.dataHash).toBe('hash-1');
+    expect(cached?.actions).toEqual(['主食固定一拳', '晚餐加蔬菜']);
+  });
+
+  it('saves multiple meal photos in order while keeping a legacy first photo', async () => {
+    const runAsync = vi
+      .fn()
+      .mockResolvedValueOnce({ lastInsertRowId: 9, changes: 1 })
+      .mockResolvedValue({ lastInsertRowId: 1, changes: 1 });
+    const db = {
+      runAsync,
+      withTransactionAsync: async (callback: () => Promise<void>) => callback(),
+    };
+
+    await saveMeal(db as never, {
+      eatenAt: '2026-06-11T12:10:00.000Z',
+      mealType: 'lunch',
+      title: '双图午餐',
+      photoUris: ['meal-photos/a.jpg', 'meal-photos/b.jpg'],
+      items: [
+        {
+          id: 'item-1',
+          name: '牛肉饭',
+          weightGrams: 300,
+          calories: 620,
+          protein: 25,
+          carbs: 82,
+          fat: 20,
+          source: 'manual',
+        },
+      ],
+    });
+
+    expect(runAsync.mock.calls[0]).toContain('meal-photos/a.jpg');
+    expect(
+      runAsync.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO meal_photos')),
+    ).toHaveLength(2);
+    expect(runAsync.mock.calls.some((call) => call.includes('meal-photos/b.jpg'))).toBe(true);
   });
 
   it('saves custom foods with searchable aliases', async () => {

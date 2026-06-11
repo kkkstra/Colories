@@ -5,7 +5,10 @@ import type {
   AIProviderConfig,
   AIRecognizedFood,
   AIResponseMode,
+  DailyTargets,
   FoodRecognitionResult,
+  MacroValues,
+  NutritionInsightAdvice,
 } from '@/types/domain';
 
 const REQUEST_TIMEOUT_MS = 45_000;
@@ -58,7 +61,32 @@ const RESPONSE_SCHEMA = {
   },
 } as const;
 
+const INSIGHT_ADVICE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['title', 'summary', 'actions', 'warnings'],
+  properties: {
+    title: { type: 'string' },
+    summary: { type: 'string' },
+    actions: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    warnings: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+  },
+} as const;
+
 type FetchLike = typeof fetch;
+
+export interface NutritionInsightAdviceInput {
+  targets: DailyTargets;
+  days: readonly (MacroValues & { dateKey: string })[];
+  periodDays?: number;
+  missingDays?: number;
+}
 
 export class AIProviderError extends Error {
   constructor(
@@ -117,13 +145,76 @@ export async function recognizeFoodImage(
   imageDataUri: string,
   fetchImpl: FetchLike = fetch,
 ): Promise<FoodRecognitionResult> {
-  return requestRecognition(config, apiKey, imageDataUri, false, fetchImpl);
+  return recognizeFoodImages(config, apiKey, [imageDataUri], fetchImpl);
+}
+
+export async function recognizeFoodImages(
+  config: AIProviderConfig,
+  apiKey: string,
+  imageDataUris: readonly string[],
+  fetchImpl: FetchLike = fetch,
+): Promise<FoodRecognitionResult> {
+  if (imageDataUris.length === 0) {
+    throw new AIProviderError('请先选择至少一张图片。', 'invalid_response');
+  }
+  return requestRecognition(config, apiKey, imageDataUris, false, fetchImpl);
+}
+
+export async function generateNutritionInsightAdvice(
+  config: AIProviderConfig,
+  apiKey: string,
+  input: NutritionInsightAdviceInput,
+  fetchImpl: FetchLike = fetch,
+): Promise<NutritionInsightAdvice> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetchImpl(toChatCompletionsUrl(config.baseUrl), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(buildInsightAdviceRequestBody(config, input)),
+      signal: controller.signal,
+    });
+    if (response.status === 401 || response.status === 403) {
+      throw new AIProviderError('API Key 无效或没有该模型的访问权限。', 'auth');
+    }
+    if (response.status === 429) {
+      throw new AIProviderError('模型服务请求过于频繁或余额不足，请稍后重试。', 'rate_limit');
+    }
+    if (!response.ok) {
+      const details = safeErrorMessage(
+        extractProviderErrorMessage(await response.text()),
+        apiKey,
+      );
+      throw new AIProviderError(
+        `模型服务返回 ${response.status}：${details.slice(0, 180)}`,
+        response.status === 400 || response.status === 404 ? 'unsupported' : 'network',
+      );
+    }
+
+    const payload = (await response.json()) as Record<string, unknown>;
+    const content = extractMessageContent(payload);
+    return parseInsightAdviceContent(content);
+  } catch (error) {
+    if (error instanceof AIProviderError) {
+      throw error;
+    }
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new AIProviderError('模型服务响应超时，请稍后再试。', 'timeout');
+    }
+    throw new AIProviderError(`无法连接模型服务：${safeErrorMessage(error, apiKey)}`, 'network');
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function requestRecognition(
   config: AIProviderConfig,
   apiKey: string,
-  imageDataUri: string,
+  imageDataUris: string | readonly string[],
   isTest: boolean,
   fetchImpl: FetchLike,
 ): Promise<FoodRecognitionResult> {
@@ -136,7 +227,7 @@ async function requestRecognition(
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(buildRequestBody(config, imageDataUri, isTest)),
+      body: JSON.stringify(buildRequestBody(config, imageDataUris, isTest)),
       signal: controller.signal,
     });
     if (response.status === 401 || response.status === 403) {
@@ -174,16 +265,20 @@ async function requestRecognition(
 
 export function buildRequestBody(
   config: AIProviderConfig,
-  imageDataUri: string,
+  imageDataUris: string | readonly string[],
   isTest = false,
 ): Record<string, unknown> {
+  const images = Array.isArray(imageDataUris) ? imageDataUris : [imageDataUris];
   const instruction = isTest
     ? '这是一次能力测试。即使图片里没有食物，也必须返回 meal_title 空字符串、foods 空数组和 warnings 数组。'
     : `识别图片中所有可见食物并估算可食用重量、烹饪方式、热量、蛋白质、碳水和脂肪。
+如果有多张图片，它们可能是同一餐的不同角度或同一餐的不同菜品；综合所有图片判断，不要重复统计同一道可见食物。
+如果图片包含包装正面、营养成分表、配料表、菜单或标签文字，先读取文字信息；优先使用营养成分表上的每100g/每100ml或每份数据，并结合净含量、份量和实际食用量换算到本次记录。
+如果只看到配料表或包装文字但没有完整营养值，保留可读出的食物名称线索，降低 confidence，并在 warning 说明哪些营养值是估算。
 重量和营养值必须对应图片中本次可见份量，不是每100克。无法判断时降低 confidence 并写入 warning。
 优先输出通用、简洁的中文食物库名称，例如“白米饭”“鸡胸肉”“番茄炒蛋”“牛肉面”，不要输出冗长描述或品牌名。
 如果是组合餐且能看出常见菜名，优先输出常见菜名；看不出时拆成主要可见食材。
-不要把餐具、包装或桌面识别为食物。
+不要把餐具、桌面或空包装识别为食物；但包装和标签上的文字可以作为营养估算依据。
 同时生成 meal_title，用 4-12 个中文字符概括这一餐，例如“鸡腿饭配青菜”“咖啡和贝果”。不要写热量、时间段或“健康餐”这类泛称。`;
 
   const body: Record<string, unknown> = {
@@ -198,7 +293,10 @@ export function buildRequestBody(
       {
         role: 'user',
         content: [
-          { type: 'image_url', image_url: { url: imageDataUri } },
+          ...images.map((imageDataUri) => ({
+            type: 'image_url',
+            image_url: { url: imageDataUri },
+          })),
           {
             type: 'text',
             text: `${instruction}\nJSON 字段：meal_title, foods, warnings；每个 food 包含 name, estimated_weight_grams, cooking_method, confidence, nutrition(calories, protein, carbs, fat), warning。`,
@@ -215,6 +313,63 @@ export function buildRequestBody(
         name: 'food_recognition',
         strict: true,
         schema: RESPONSE_SCHEMA,
+      },
+    };
+  } else if (config.responseMode === 'json_object') {
+    body.response_format = { type: 'json_object' };
+  }
+  return body;
+}
+
+export function buildInsightAdviceRequestBody(
+  config: AIProviderConfig,
+  input: NutritionInsightAdviceInput,
+): Record<string, unknown> {
+  const data = {
+    period_days: input.periodDays ?? input.days.length,
+    recorded_days: input.days.length,
+    missing_days: input.missingDays ?? 0,
+    targets: normalizeInsightNumbers(input.targets),
+    days: input.days.map((day) => ({
+      date: day.dateKey,
+      ...normalizeInsightNumbers(day),
+    })),
+  };
+  const body: Record<string, unknown> = {
+    model: config.model.trim(),
+    temperature: 0.2,
+    messages: [
+      {
+        role: 'system',
+        content:
+          '你是谨慎、具体的饮食记录分析助手。只基于用户记录和目标给饮食建议，不提供医疗建议，不诊断疾病，不夸大估算准确性。',
+      },
+      {
+        role: 'user',
+        content: `根据最近一段时间饮食汇总和目标，输出给普通用户看的中文 JSON 建议。
+要求：
+- title 12 个中文以内。
+- summary 用一句话概括最值得注意的趋势。
+- actions 给 2-3 条可执行建议，避免泛泛而谈。
+- warnings 只写需要用户核对的数据问题或明显风险；没有就返回空数组。
+- 不要要求用户节食到低于目标很多，不要使用医疗诊断或保证性表达。
+- days 只包含有记录的日期；missing_days 是没有记录的天数，不要把缺失日期当作 0 摄入或据此判断吃得少。
+- 如果 missing_days 较多，只作为记录完整度提醒，避免对趋势下确定结论。
+
+数据：${JSON.stringify(data)}
+
+只输出 JSON，字段为 title, summary, actions, warnings。`,
+      },
+    ],
+  };
+
+  if (config.responseMode === 'json_schema') {
+    body.response_format = {
+      type: 'json_schema',
+      json_schema: {
+        name: 'nutrition_insight_advice',
+        strict: true,
+        schema: INSIGHT_ADVICE_SCHEMA,
       },
     };
   } else if (config.responseMode === 'json_object') {
@@ -247,6 +402,34 @@ export function parseRecognitionContent(content: string): FoodRecognitionResult 
     ? parsed.warnings.filter((value): value is string => typeof value === 'string')
     : [];
   return { mealTitle, foods, warnings };
+}
+
+export function parseInsightAdviceContent(content: string): NutritionInsightAdvice {
+  const cleaned = content
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    throw new AIProviderError('模型没有返回有效建议 JSON。', 'invalid_response');
+  }
+
+  if (!isObject(parsed) || typeof parsed.summary !== 'string' || !parsed.summary.trim()) {
+    throw new AIProviderError('模型建议 JSON 缺少 summary。', 'invalid_response');
+  }
+  const actions = normalizeStringList(parsed.actions, 3);
+  if (actions.length === 0) {
+    throw new AIProviderError('模型建议 JSON 缺少 actions。', 'invalid_response');
+  }
+  const title = typeof parsed.title === 'string' ? parsed.title.trim() : '';
+  return {
+    title: title || '本周建议',
+    summary: parsed.summary.trim(),
+    actions,
+    warnings: normalizeStringList(parsed.warnings, 2),
+  };
 }
 
 function parseFood(value: unknown): AIRecognizedFood | null {
@@ -308,6 +491,30 @@ function extractProviderErrorMessage(raw: string): string {
     // Fall back to the provider's plain-text response.
   }
   return raw;
+}
+
+function normalizeStringList(value: unknown, maxLength: number): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, maxLength);
+}
+
+function normalizeInsightNumbers(values: MacroValues): MacroValues {
+  return {
+    calories: roundForInsight(values.calories),
+    protein: roundForInsight(values.protein),
+    carbs: roundForInsight(values.carbs),
+    fat: roundForInsight(values.fat),
+  };
+}
+
+function roundForInsight(value: number): number {
+  return Number.isFinite(value) ? Math.round(value * 10) / 10 : 0;
 }
 
 function toChatCompletionsUrl(baseUrl: string): string {

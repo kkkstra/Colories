@@ -1,8 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { Card } from '@/components/ui/Card';
@@ -44,6 +44,7 @@ const CATEGORY_ICONS: Record<FoodCategory, keyof typeof Ionicons.glyphMap> = {
 
 export default function FoodLibraryScreen() {
   const db = useSQLiteContext();
+  const scrollRef = useRef<ScrollView>(null);
   const [query, setQuery] = useState('');
   const [scope, setScope] = useState<FoodCatalogScope>('all');
   const [category, setCategory] = useState<CategoryFilter>('all');
@@ -109,9 +110,19 @@ export default function FoodLibraryScreen() {
   const totalPages = Math.max(1, Math.ceil(resultCount / PAGE_SIZE));
   const canGoPrevious = page > 0;
   const canGoNext = page + 1 < totalPages;
+  const scrollToTop = () => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+    });
+  };
+
+  const goToPage = (nextPage: number) => {
+    setPage(nextPage);
+    scrollToTop();
+  };
 
   return (
-    <Screen topSafe={false} contentContainerStyle={styles.screen}>
+    <Screen topSafe={false} scrollRef={scrollRef} contentContainerStyle={styles.screen}>
       <View style={styles.statsRow}>
         <StatTile label="全部" value={stats.total} />
         <StatTile label="预置" value={stats.builtIn} />
@@ -125,7 +136,7 @@ export default function FoodLibraryScreen() {
               label="搜索"
               value={query}
               onChangeText={setQuery}
-              placeholder="米饭、牛肉面、奶茶、橄榄油…"
+              placeholder="米饭、牛肉面、奶茶…"
             />
           </View>
           <Pressable
@@ -151,6 +162,7 @@ export default function FoodLibraryScreen() {
           onChange={setCategory}
           options={categoryOptions}
           adaptive
+          columns={3}
         />
       </Card>
 
@@ -179,7 +191,7 @@ export default function FoodLibraryScreen() {
           icon="chevron-back"
           variant="secondary"
           disabled={!canGoPrevious}
-          onPress={() => setPage((value) => Math.max(0, value - 1))}
+          onPress={() => goToPage(Math.max(0, page - 1))}
           style={styles.pageButton}
         />
         <AppButton
@@ -187,7 +199,7 @@ export default function FoodLibraryScreen() {
           icon="chevron-forward"
           variant="secondary"
           disabled={!canGoNext}
-          onPress={() => setPage((value) => value + 1)}
+          onPress={() => goToPage(page + 1)}
           style={styles.pageButton}
         />
       </View>
@@ -201,7 +213,7 @@ function FoodRow({ food }: { food: ManagedFood }) {
       router.push({ pathname: '/edit-food', params: { id: food.id } });
       return;
     }
-    router.push({ pathname: '/edit-food', params: { sourceId: food.id } });
+    router.push({ pathname: '/food-detail', params: { id: food.id } });
   };
 
   return (
@@ -231,7 +243,7 @@ function FoodRow({ food }: { food: ManagedFood }) {
             {food.sourceReference}
           </Text>
           <Ionicons
-            name={food.isCustom ? 'create-outline' : 'copy-outline'}
+            name={food.isCustom ? 'create-outline' : 'information-circle-outline'}
             size={18}
             color={theme.colors.primary}
           />

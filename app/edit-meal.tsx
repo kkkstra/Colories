@@ -1,13 +1,16 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { MealItemEditor } from '@/components/MealItemEditor';
-import { AppButton } from '@/components/ui/AppButton';
+import { HeaderIconButton } from '@/components/ui/AppHeader';
 import { Card } from '@/components/ui/Card';
 import { ChoiceChips } from '@/components/ui/ChoiceChips';
 import { FormField } from '@/components/ui/FormField';
+import { MealDateTimePicker } from '@/components/ui/MealDateTimePicker';
+import { MealTotalSummary } from '@/components/ui/MealTotalSummary';
+import { PhotoGallery, type PhotoGalleryItem } from '@/components/ui/PhotoGallery';
 import { Screen } from '@/components/ui/Screen';
 import { theme } from '@/constants/Theme';
 import { showAlert } from '@/lib/alert';
@@ -39,6 +42,7 @@ export default function EditMealScreen() {
   const [mealType, setMealType] = useState<MealType>('lunch');
   const [mealTitle, setMealTitle] = useState('');
   const [notes, setNotes] = useState('');
+  const [eatenAt, setEatenAt] = useState<Date | null>(null);
   const [saving, setSaving] = useState(false);
   const [catalogSavingId, setCatalogSavingId] = useState<string>();
 
@@ -52,6 +56,9 @@ export default function EditMealScreen() {
       setMealType(nextMeal?.mealType ?? 'lunch');
       setMealTitle(nextMeal?.title ?? createMealTitle(nextMeal?.items ?? []) ?? '');
       setNotes(nextMeal?.notes ?? '');
+      if (nextMeal) {
+        setEatenAt(new Date(nextMeal.eatenAt));
+      }
     });
   }, [db, mealId]);
 
@@ -64,17 +71,28 @@ export default function EditMealScreen() {
   }
 
   const totals = sumMacros(items);
-  const displayPhotoUri = resolveStoredPhotoUri(meal.photoUri);
+  const displayPhotos: PhotoGalleryItem[] = (meal.photoUris?.length
+    ? meal.photoUris
+    : meal.photoUri
+      ? [meal.photoUri]
+      : []
+  )
+    .map((uri) => ({ uri: resolveStoredPhotoUri(uri) }))
+    .filter((photo): photo is PhotoGalleryItem => Boolean(photo.uri));
   const handleSave = async () => {
     if (items.length === 0) {
       showAlert('至少保留一种食物，或删除整餐记录。');
+      return;
+    }
+    if (!eatenAt) {
+      showAlert('请检查吃饭时间');
       return;
     }
     setSaving(true);
     try {
       const nextNotes = notes.trim() || undefined;
       await updateMeal(db, meal.id, {
-        eatenAt: meal.eatenAt,
+        eatenAt: eatenAt.toISOString(),
         mealType,
         title: resolveMealTitle(mealTitle, items),
         notes: nextNotes,
@@ -133,85 +151,96 @@ export default function EditMealScreen() {
   };
 
   return (
-    <Screen>
-      <View style={styles.header}>
-        <View style={styles.titleIcon}>
-          <Text style={styles.titleIconText}>{items.length}</Text>
+    <>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <View style={styles.headerActions}>
+              <HeaderIconButton
+                accessibilityLabel="删除整餐"
+                icon="trash-outline"
+                onPress={confirmDelete}
+                variant="danger"
+              />
+              <HeaderIconButton
+                accessibilityLabel="保存修改"
+                icon="checkmark"
+                loading={saving}
+                onPress={handleSave}
+                variant="primary"
+              />
+            </View>
+          ),
+        }}
+      />
+      <Screen topSafe={false} stickyHeaderKeys={['meal-total-summary']}>
+        <View style={styles.header}>
+          <View style={styles.titleIcon}>
+            <Text style={styles.titleIconText}>{items.length}</Text>
+          </View>
+          <Text style={styles.title}>编辑记录</Text>
         </View>
-        <Text style={styles.title}>编辑记录</Text>
-      </View>
-      <Card variant="prominent" style={styles.metaCard}>
-        <View style={styles.metaTitleRow}>
-          <Text style={styles.metaTitle}>本餐信息</Text>
-          <Text style={styles.timeText}>
-            {new Date(meal.eatenAt).toLocaleString('zh-CN', {
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
-          </Text>
+        <View key="meal-total-summary" style={styles.stickyTotalWrap}>
+          <MealTotalSummary totals={totals} />
         </View>
-        <FormField
-          label="标题"
-          value={mealTitle}
-          onChangeText={setMealTitle}
-          placeholder="例如：鸡腿饭配青菜"
-          style={styles.titleInput}
-        />
-        <ChoiceChips
-          value={mealType}
-          onChange={setMealType}
-          options={MEAL_TYPE_OPTIONS}
-          adaptive
-        />
-        <FormField
-          label="备注"
-          value={notes}
-          onChangeText={setNotes}
-          placeholder="口味、场景或份量修正…"
-          multiline
-          style={styles.notesInput}
-        />
-      </Card>
-      {displayPhotoUri ? <Image source={{ uri: displayPhotoUri }} style={styles.photo} /> : null}
-      {items.map((item, index) => (
-        <MealItemEditor
-          key={item.id}
-          item={item}
-          onChange={(next) =>
-            setItems((current) =>
-              current.map((currentItem, currentIndex) => (currentIndex === index ? next : currentItem)),
-            )
-          }
-          onAddToCatalog={addItemToCatalog}
-          addingToCatalog={catalogSavingId === item.id}
-          onRemove={() =>
-            setItems((current) => current.filter((currentItem) => currentItem.id !== item.id))
-          }
-        />
-      ))}
-      <View style={styles.total}>
-        <View style={styles.totalMacros}>
-          <View style={[styles.totalDot, { backgroundColor: theme.colors.protein }]} />
-          <Text style={styles.totalMeta}>{Math.round(totals.protein)}</Text>
-          <View style={[styles.totalDot, { backgroundColor: theme.colors.carbs }]} />
-          <Text style={styles.totalMeta}>{Math.round(totals.carbs)}</Text>
-          <View style={[styles.totalDot, { backgroundColor: theme.colors.fat }]} />
-          <Text style={styles.totalMeta}>{Math.round(totals.fat)}</Text>
-        </View>
-        <View style={styles.totalRight}>
-          <Text style={styles.totalValue}>{Math.round(totals.calories)}</Text>
-          <Text style={styles.totalUnit}>kcal</Text>
-        </View>
-      </View>
-      <AppButton label="保存修改" icon="checkmark" onPress={handleSave} loading={saving} />
-      <AppButton label="删除整餐" variant="danger" onPress={confirmDelete} />
-    </Screen>
+        <Card variant="prominent" style={styles.metaCard}>
+          <View style={styles.metaTitleRow}>
+            <Text style={styles.metaTitle}>本餐信息</Text>
+          </View>
+          {eatenAt ? <MealDateTimePicker value={eatenAt} onChange={setEatenAt} /> : null}
+          <FormField
+            label="标题"
+            value={mealTitle}
+            onChangeText={setMealTitle}
+            placeholder="例如：鸡腿饭配青菜"
+            style={styles.titleInput}
+          />
+          <ChoiceChips
+            value={mealType}
+            onChange={setMealType}
+            options={MEAL_TYPE_OPTIONS}
+            adaptive
+            columns={4}
+          />
+          <FormField
+            label="备注"
+            value={notes}
+            onChangeText={setNotes}
+            placeholder="口味、场景或份量修正…"
+            multiline
+            style={styles.notesInput}
+          />
+        </Card>
+        <PhotoGallery photos={displayPhotos} />
+        {items.map((item, index) => (
+          <MealItemEditor
+            key={item.id}
+            item={item}
+            onChange={(next) =>
+              setItems((current) =>
+                current.map((currentItem, currentIndex) =>
+                  currentIndex === index ? next : currentItem,
+                ),
+              )
+            }
+            onAddToCatalog={addItemToCatalog}
+            addingToCatalog={catalogSavingId === item.id}
+            onRemove={() =>
+              setItems((current) => current.filter((currentItem) => currentItem.id !== item.id))
+            }
+          />
+        ))}
+      </Screen>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -245,15 +274,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 40,
   },
-  photo: {
-    width: '100%',
-    height: 250,
-    borderRadius: theme.radius.large,
-    borderCurve: 'continuous',
-    borderWidth: 1,
-    borderColor: '#FFFFFF',
-    boxShadow: theme.shadows.medium,
-  },
   metaCard: {
     gap: 13,
     borderColor: '#FFFFFF',
@@ -261,19 +281,11 @@ const styles = StyleSheet.create({
   metaTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
   },
   metaTitle: {
     color: theme.colors.text,
     fontSize: 15,
     fontWeight: '900',
-  },
-  timeText: {
-    color: theme.colors.textMuted,
-    fontSize: 12,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
   },
   notesInput: {
     minHeight: 78,
@@ -283,47 +295,9 @@ const styles = StyleSheet.create({
   titleInput: {
     fontWeight: '900',
   },
-  total: {
-    backgroundColor: theme.colors.ink,
-    borderRadius: theme.radius.medium,
-    borderCurve: 'continuous',
-    paddingHorizontal: 18,
-    paddingVertical: 17,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    boxShadow: theme.shadows.large,
-  },
-  totalValue: {
-    color: '#FFFFFF',
-    fontSize: 34,
-    lineHeight: 36,
-    fontWeight: '900',
-    fontVariant: ['tabular-nums'],
-  },
-  totalMeta: {
-    color: '#D0D5DD',
-    fontSize: 12,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
-  },
-  totalMacros: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  totalDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  totalRight: {
-    alignItems: 'flex-end',
-  },
-  totalUnit: {
-    color: theme.colors.accent,
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 1.1,
+  stickyTotalWrap: {
+    backgroundColor: 'transparent',
+    paddingVertical: 8,
+    zIndex: 4,
   },
 });

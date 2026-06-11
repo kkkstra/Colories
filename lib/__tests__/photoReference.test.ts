@@ -5,6 +5,7 @@ import {
   extractMealPhotoReference,
   joinDocumentPhotoUri,
   normalizeMealPhotoReference,
+  normalizeMealPhotoReferences,
 } from '@/lib/photoReference';
 
 describe('meal photo references', () => {
@@ -24,5 +25,15 @@ describe('meal photo references', () => {
     expect(joinDocumentPhotoUri('file:///current/Documents/', 'meal-photos/meal-abc.jpg')).toBe(
       'file:///current/Documents/meal-photos/meal-abc.jpg',
     );
+  });
+
+  it('normalizes and deduplicates multiple meal photos', () => {
+    expect(
+      normalizeMealPhotoReferences([
+        'file:///old/Documents/meal-photos/a.jpg',
+        'meal-photos/a.jpg',
+        'meal-photos/b.jpg',
+      ]),
+    ).toEqual(['meal-photos/a.jpg', 'meal-photos/b.jpg']);
   });
 });

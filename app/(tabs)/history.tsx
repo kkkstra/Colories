@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
 import { EnergyRail } from '@/components/ui/EnergyRail';
@@ -82,23 +82,35 @@ export default function HistoryScreen() {
               key={dateKey}
               accessibilityState={{ selected }}
               onPress={() => setSelectedDate(dateKey)}
-              style={[styles.dateCard, selected && styles.dateCardSelected]}
+              style={({ pressed }) => [
+                styles.dateCardShadow,
+                selected && styles.dateCardShadowSelected,
+                pressed && styles.pressed,
+              ]}
             >
-              <Text style={[styles.weekday, selected && styles.selectedMuted]}>
-                {date.toLocaleDateString('zh-CN', { weekday: 'short' })}
-              </Text>
-              <Text style={[styles.day, selected && styles.selectedText]}>{date.getDate()}</Text>
-              <View style={[styles.miniRail, selected && styles.miniRailSelected]}>
-                <View
-                  style={[
-                    styles.miniFill,
-                    {
-                      width: `${progress * 100}%`,
-                      backgroundColor:
-                        dayCalories > dayTarget ? theme.colors.accent : theme.colors.primary,
-                    },
-                  ]}
-                />
+              <View style={[styles.dateCard, selected && styles.dateCardSelected]}>
+                <Text style={[styles.weekday, selected && styles.selectedMuted]}>
+                  {date.toLocaleDateString('zh-CN', { weekday: 'short' })}
+                </Text>
+                <Text style={[styles.day, selected && styles.selectedText]}>{date.getDate()}</Text>
+                <View style={[styles.miniRail, selected && styles.miniRailSelected]}>
+                  <View
+                    style={[
+                      styles.miniFill,
+                      {
+                        width: `${progress * 100}%`,
+                        backgroundColor:
+                          selected
+                            ? dayCalories > dayTarget
+                              ? '#FFD8D0'
+                              : '#FFFFFF'
+                            : dayCalories > dayTarget
+                              ? theme.colors.accent
+                              : theme.colors.primary,
+                      },
+                    ]}
+                  />
+                </View>
               </View>
             </Pressable>
           );
@@ -121,9 +133,24 @@ export default function HistoryScreen() {
           target={targets?.calories ?? 2000}
         />
         <View style={styles.summaryMacros}>
-          <SummaryMacro label="蛋" value={selectedSummary?.protein ?? 0} color={theme.colors.protein} />
-          <SummaryMacro label="碳" value={selectedSummary?.carbs ?? 0} color={theme.colors.carbs} />
-          <SummaryMacro label="脂" value={selectedSummary?.fat ?? 0} color={theme.colors.fat} />
+          <SummaryMacro
+            label="蛋"
+            value={selectedSummary?.protein ?? 0}
+            target={targets?.protein ?? 0}
+            color={theme.colors.protein}
+          />
+          <SummaryMacro
+            label="碳"
+            value={selectedSummary?.carbs ?? 0}
+            target={targets?.carbs ?? 0}
+            color={theme.colors.carbs}
+          />
+          <SummaryMacro
+            label="脂"
+            value={selectedSummary?.fat ?? 0}
+            target={targets?.fat ?? 0}
+            color={theme.colors.fat}
+          />
         </View>
       </View>
 
@@ -181,12 +208,23 @@ export default function HistoryScreen() {
   );
 }
 
-function SummaryMacro({ label, value, color }: { label: string; value: number; color: string }) {
+function SummaryMacro({
+  label,
+  value,
+  target,
+  color,
+}: {
+  label: string;
+  value: number;
+  target: number;
+  color: string;
+}) {
   return (
     <View style={styles.summaryMacro}>
       <View style={[styles.summaryMacroDot, { backgroundColor: color }]} />
       <Text style={styles.summaryMacroLabel}>{label}</Text>
       <Text style={styles.summaryMacroValue}>{Math.round(value)}</Text>
+      <Text style={styles.summaryMacroLimit}>上限 {Math.round(target)}</Text>
     </View>
   );
 }
@@ -220,24 +258,51 @@ const styles = StyleSheet.create({
   },
   dateRail: {
     gap: 8,
-    paddingVertical: 2,
+    paddingVertical: 6,
   },
-  dateCard: {
+  dateCardShadow: {
     width: 58,
     height: 88,
+    borderRadius: 18,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.surface,
+    ...Platform.select({
+      android: {
+        elevation: 3,
+        shadowColor: '#101828',
+      },
+      default: {
+        boxShadow: theme.shadows.small,
+      },
+    }),
+  },
+  dateCardShadowSelected: {
+    backgroundColor: theme.colors.primary,
+    ...Platform.select({
+      android: {
+        elevation: 0,
+        shadowColor: 'transparent',
+      },
+      default: {
+        boxShadow: 'none',
+      },
+    }),
+  },
+  dateCard: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
     borderRadius: 18,
+    borderCurve: 'continuous',
+    overflow: 'hidden',
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.borderSoft,
-    boxShadow: theme.shadows.small,
   },
   dateCardSelected: {
     backgroundColor: theme.colors.primary,
     borderColor: theme.colors.primary,
-    boxShadow: theme.shadows.primary,
   },
   weekday: {
     color: theme.colors.textMuted,
@@ -328,6 +393,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 6,
     padding: 11,
@@ -353,6 +419,14 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     fontSize: 15,
     fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+  summaryMacroLimit: {
+    width: '100%',
+    color: theme.colors.textMuted,
+    textAlign: 'right',
+    fontSize: 8,
+    fontWeight: '800',
     fontVariant: ['tabular-nums'],
   },
   mealHeader: {

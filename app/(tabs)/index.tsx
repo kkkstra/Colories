@@ -65,10 +65,12 @@ export default function TodayScreen() {
     );
   }
 
+  const consumedCalories = Math.round(totals.calories);
+  const targetCalories = Math.round(targets.calories);
   const remaining = Math.round(targets.calories - totals.calories);
-  const progress = targets.calories > 0 ? totals.calories / targets.calories : 0;
+  const isOverTarget = remaining < 0;
   const goalState =
-    remaining < 0 ? '已超出目标' : remaining < targets.calories * 0.18 ? '接近目标' : '节奏正常';
+    isOverTarget ? '已超出目标' : remaining < targets.calories * 0.18 ? '接近目标' : '节奏正常';
 
   return (
     <Screen>
@@ -76,33 +78,33 @@ export default function TodayScreen() {
         <View style={styles.headerCopy}>
           <Text style={styles.title}>{formatChineseDate(dateKey)}</Text>
           <View style={styles.statusRow}>
-            <View style={[styles.statusDot, remaining < 0 && styles.statusDotOver]} />
+            <View style={[styles.statusDot, isOverTarget && styles.statusDotOver]} />
             <Text style={styles.statusText}>{refreshing ? '同步中' : goalState}</Text>
           </View>
         </View>
-        <Pressable
-          accessibilityLabel="记录一餐"
-          accessibilityRole="button"
-          onPress={() => router.push('/(tabs)/record')}
-          style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}
-        >
-          <Ionicons name="add" size={25} color="#FFFFFF" />
-        </Pressable>
       </View>
 
       <View style={styles.dashboard}>
-        <View pointerEvents="none" style={styles.dashboardAccent} />
+        <View
+          pointerEvents="none"
+          style={[styles.dashboardAccent, isOverTarget && styles.dashboardAccentOver]}
+        />
         <View style={styles.hero}>
-          <View>
-            <Text style={styles.calorieLabel}>{remaining < 0 ? '超出' : '剩余'}</Text>
+          <View style={styles.calorieBlock}>
+            <Text style={styles.calorieLabel}>已摄入</Text>
             <View style={styles.calorieRow}>
-              <Text style={[styles.calorieValue, remaining < 0 && styles.over]}>
-                {Math.abs(remaining)}
-              </Text>
+              <Text style={styles.calorieValue}>{consumedCalories}</Text>
               <Text style={styles.calorieUnit}>kcal</Text>
             </View>
           </View>
-          <FuelGauge progress={progress} over={remaining < 0} />
+          <View style={styles.calorieStats}>
+            <CalorieMiniStat
+              label={isOverTarget ? '超出' : '剩余'}
+              value={Math.abs(remaining)}
+              tone={isOverTarget ? 'over' : 'primary'}
+            />
+            <CalorieMiniStat label="目标" value={targetCalories} tone="muted" />
+          </View>
         </View>
 
         <EnergyRail value={totals.calories} target={targets.calories} />
@@ -137,14 +139,6 @@ export default function TodayScreen() {
           <Text style={styles.sectionTitle}>今日餐食</Text>
           <Text style={styles.mealCount}>{meals.length}</Text>
         </View>
-        <Pressable
-          accessibilityLabel="添加餐食"
-          accessibilityRole="button"
-          onPress={() => router.push('/(tabs)/record')}
-          style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
-        >
-          <Ionicons name="add" size={20} color={theme.colors.primary} />
-        </Pressable>
       </View>
 
       {meals.length === 0 ? (
@@ -204,36 +198,6 @@ export default function TodayScreen() {
   );
 }
 
-function FuelGauge({ progress, over }: { progress: number; over: boolean }) {
-  const activeSegments = Math.min(8, Math.max(0, Math.ceil(progress * 8)));
-
-  return (
-    <View
-      accessibilityLabel={`今日热量进度 ${Math.round(progress * 100)}%`}
-      style={[styles.gauge, over && styles.gaugeOver]}
-    >
-      <Ionicons
-        name={over ? 'warning' : 'flash'}
-        size={19}
-        color={over ? theme.colors.accent : theme.colors.primary}
-      />
-      <View style={styles.gaugeSegments}>
-        {Array.from({ length: 8 }, (_, index) => (
-          <View
-            key={index}
-            style={[
-              styles.gaugeSegment,
-              index < activeSegments && {
-                backgroundColor: over ? theme.colors.accent : theme.colors.primary,
-              },
-            ]}
-          />
-        ))}
-      </View>
-    </View>
-  );
-}
-
 function MacroTile({
   label,
   accessibilityName,
@@ -259,8 +223,55 @@ function MacroTile({
         <Text style={styles.macroLabel}>{label}</Text>
       </View>
       <Text style={styles.macroValue}>{Math.round(value)}</Text>
+      <Text style={styles.macroLimit}>上限 {Math.round(target)}g</Text>
       <View style={styles.macroTrack}>
         <View style={[styles.macroFill, { backgroundColor: color, width: `${progress * 100}%` }]} />
+      </View>
+    </View>
+  );
+}
+
+function CalorieMiniStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: 'primary' | 'over' | 'muted';
+}) {
+  const isOver = tone === 'over';
+  const isPrimary = tone === 'primary';
+
+  return (
+    <View
+      accessibilityLabel={`${label} ${Math.round(value)} 千卡`}
+      style={[
+        styles.calorieMiniStat,
+        isPrimary && styles.calorieMiniStatPrimary,
+        isOver && styles.calorieMiniStatOver,
+      ]}
+    >
+      <Text
+        style={[
+          styles.calorieMiniLabel,
+          isPrimary && styles.calorieMiniLabelPrimary,
+          isOver && styles.calorieMiniLabelOver,
+        ]}
+      >
+        {label}
+      </Text>
+      <View style={styles.calorieMiniRow}>
+        <Text
+          style={[
+            styles.calorieMiniValue,
+            isPrimary && styles.calorieMiniValuePrimary,
+            isOver && styles.calorieMiniValueOver,
+          ]}
+        >
+          {Math.round(value)}
+        </Text>
+        <Text style={[styles.calorieMiniUnit, isOver && styles.calorieMiniUnitOver]}>kcal</Text>
       </View>
     </View>
   );
@@ -305,15 +316,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
-  headerAction: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: theme.colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    boxShadow: theme.shadows.primary,
-  },
   pressed: {
     opacity: 0.72,
   },
@@ -323,27 +325,37 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
     borderRadius: 24,
     borderCurve: 'continuous',
-    padding: 21,
+    padding: 20,
+    paddingRight: 22,
     gap: 18,
     overflow: 'hidden',
     boxShadow: theme.shadows.large,
   },
   dashboardAccent: {
     position: 'absolute',
-    top: 18,
-    right: 0,
-    width: 6,
-    height: 106,
+    top: 118,
+    right: -2,
+    width: 5,
+    height: 58,
     borderTopLeftRadius: 6,
     borderBottomLeftRadius: 6,
-    backgroundColor: theme.colors.accent,
+    backgroundColor: theme.colors.primary,
     opacity: 0.9,
+    zIndex: 0,
+  },
+  dashboardAccentOver: {
+    backgroundColor: theme.colors.accent,
   },
   hero: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 18,
+    gap: 12,
+    zIndex: 1,
+  },
+  calorieBlock: {
+    flex: 1,
+    minWidth: 0,
   },
   calorieLabel: {
     color: theme.colors.textMuted,
@@ -357,10 +369,10 @@ const styles = StyleSheet.create({
   },
   calorieValue: {
     color: theme.colors.ink,
-    fontSize: 62,
-    lineHeight: 68,
+    fontSize: 50,
+    lineHeight: 56,
     fontWeight: '900',
-    letterSpacing: -3.2,
+    letterSpacing: 0,
     fontVariant: ['tabular-nums'],
   },
   calorieUnit: {
@@ -369,39 +381,73 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     paddingBottom: 11,
   },
-  over: {
+  calorieStats: {
+    width: 104,
+    flexShrink: 0,
+    gap: 8,
+  },
+  calorieMiniStat: {
+    minHeight: 45,
+    borderRadius: 14,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+    backgroundColor: theme.colors.surfaceInset,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    justifyContent: 'center',
+    gap: 2,
+  },
+  calorieMiniStatPrimary: {
+    borderColor: 'rgba(39, 93, 255, 0.18)',
+    backgroundColor: theme.colors.primaryWash,
+  },
+  calorieMiniStatOver: {
+    borderColor: 'rgba(255, 90, 61, 0.24)',
+    backgroundColor: theme.colors.accentWash,
+  },
+  calorieMiniLabel: {
+    color: theme.colors.textMuted,
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  calorieMiniLabelPrimary: {
+    color: theme.colors.primary,
+  },
+  calorieMiniLabelOver: {
     color: theme.colors.accent,
   },
-  gauge: {
-    width: 84,
-    height: 96,
-    borderRadius: 24,
-    backgroundColor: theme.colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 9,
-    borderWidth: 1,
-    borderColor: '#FFFFFF',
-    boxShadow: theme.shadows.small,
-  },
-  gaugeOver: {
-    backgroundColor: theme.colors.accentSoft,
-  },
-  gaugeSegments: {
-    width: 48,
+  calorieMiniRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'flex-end',
     gap: 4,
   },
-  gaugeSegment: {
-    width: 9,
-    height: 9,
-    borderRadius: 3,
-    backgroundColor: '#D3DAE5',
+  calorieMiniValue: {
+    color: theme.colors.text,
+    fontSize: 18,
+    lineHeight: 20,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+  calorieMiniValuePrimary: {
+    color: theme.colors.primary,
+  },
+  calorieMiniValueOver: {
+    color: theme.colors.accent,
+  },
+  calorieMiniUnit: {
+    color: theme.colors.textFaint,
+    fontSize: 8,
+    fontWeight: '900',
+    paddingBottom: 2,
+  },
+  calorieMiniUnitOver: {
+    color: theme.colors.accent,
   },
   macroGrid: {
     flexDirection: 'row',
     gap: 8,
+    zIndex: 1,
   },
   macroTile: {
     flex: 1,
@@ -434,6 +480,12 @@ const styles = StyleSheet.create({
     fontSize: 21,
     lineHeight: 23,
     fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+  macroLimit: {
+    color: theme.colors.textMuted,
+    fontSize: 9,
+    fontWeight: '800',
     fontVariant: ['tabular-nums'],
   },
   macroTrack: {
@@ -474,14 +526,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
     fontVariant: ['tabular-nums'],
-  },
-  addButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: theme.colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   empty: {
     minHeight: 108,

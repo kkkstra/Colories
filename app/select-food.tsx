@@ -1,8 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { Card } from '@/components/ui/Card';
@@ -40,6 +40,7 @@ const CATEGORY_ICONS: Record<FoodCategory, keyof typeof Ionicons.glyphMap> = {
 export default function SelectFoodScreen() {
   const db = useSQLiteContext();
   const { queueMealItem } = useApp();
+  const scrollRef = useRef<ScrollView>(null);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<CategoryFilter>('all');
   const [foods, setFoods] = useState<ManagedFood[]>([]);
@@ -101,6 +102,16 @@ export default function SelectFoodScreen() {
   const totalPages = Math.max(1, Math.ceil(resultCount / PAGE_SIZE));
   const canGoPrevious = page > 0;
   const canGoNext = page + 1 < totalPages;
+  const scrollToTop = () => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+    });
+  };
+
+  const goToPage = (nextPage: number) => {
+    setPage(nextPage);
+    scrollToTop();
+  };
 
   const addFood = (food: ManagedFood) => {
     queueMealItem({
@@ -115,7 +126,7 @@ export default function SelectFoodScreen() {
   };
 
   return (
-    <Screen topSafe={false} contentContainerStyle={styles.screen}>
+    <Screen topSafe={false} scrollRef={scrollRef} contentContainerStyle={styles.screen}>
       <Card variant="prominent" style={styles.searchCard}>
         <FormField
           label="搜索食物"
@@ -129,6 +140,7 @@ export default function SelectFoodScreen() {
           onChange={setCategory}
           options={categoryOptions}
           adaptive
+          columns={3}
         />
       </Card>
 
@@ -193,7 +205,7 @@ export default function SelectFoodScreen() {
           icon="chevron-back"
           variant="secondary"
           disabled={!canGoPrevious}
-          onPress={() => setPage((value) => Math.max(0, value - 1))}
+          onPress={() => goToPage(Math.max(0, page - 1))}
           style={styles.pageButton}
         />
         <AppButton
@@ -201,7 +213,7 @@ export default function SelectFoodScreen() {
           icon="chevron-forward"
           variant="secondary"
           disabled={!canGoNext}
-          onPress={() => setPage((value) => value + 1)}
+          onPress={() => goToPage(page + 1)}
           style={styles.pageButton}
         />
       </View>

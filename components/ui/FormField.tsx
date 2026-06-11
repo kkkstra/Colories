@@ -7,13 +7,30 @@ interface Props extends TextInputProps {
   hint?: string;
 }
 
-export function FormField({ label, hint, style, ...props }: Props) {
+export function FormField({
+  label,
+  hint,
+  style,
+  multiline = false,
+  numberOfLines,
+  textAlignVertical,
+  ...props
+}: Props) {
+  const isMultiline = Boolean(multiline);
+
   return (
     <View style={styles.wrapper}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
+        multiline={isMultiline}
+        numberOfLines={isMultiline ? numberOfLines : 1}
         placeholderTextColor={theme.colors.textMuted}
-        style={[styles.input, style]}
+        textAlignVertical={textAlignVertical ?? (isMultiline ? 'top' : 'center')}
+        style={[
+          styles.input,
+          isMultiline ? styles.multilineInput : styles.singleLineInput,
+          style,
+        ]}
         {...props}
       />
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}
@@ -32,7 +49,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   input: {
-    minHeight: 50,
     borderWidth: 1,
     borderColor: theme.colors.borderSoft,
     borderRadius: theme.radius.small,
@@ -42,6 +58,17 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontSize: 16,
     boxShadow: 'inset 0 1px 0 rgba(16, 24, 40, 0.03)',
+  },
+  singleLineInput: {
+    height: 50,
+    paddingVertical: 0,
+    includeFontPadding: false,
+  },
+  multilineInput: {
+    minHeight: 88,
+    paddingTop: 12,
+    paddingBottom: 12,
+    lineHeight: 22,
   },
   hint: {
     color: theme.colors.textMuted,

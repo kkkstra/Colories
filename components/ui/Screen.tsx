@@ -1,4 +1,4 @@
-import type { PropsWithChildren } from 'react';
+import { Children, isValidElement, type PropsWithChildren, type Ref } from 'react';
 import {
   Platform,
   ScrollView,
@@ -15,20 +15,33 @@ const FLOATING_TAB_CLEARANCE = 92;
 type Props = PropsWithChildren<
   ScrollViewProps & {
     scroll?: boolean;
+    scrollRef?: Ref<ScrollView>;
     topSafe?: boolean;
+    stickyHeaderKeys?: string[];
   }
 >;
 
 export function Screen({
   children,
   scroll = true,
+  scrollRef,
   topSafe = true,
+  stickyHeaderKeys,
   contentContainerStyle,
   ...props
 }: Props) {
   const insets = useSafeAreaInsets();
   const bottomClearance = FLOATING_TAB_CLEARANCE + Math.max(insets.bottom, 14);
   const edges = topSafe ? ['top' as const] : [];
+  const activeStickyHeaderKeys = stickyHeaderKeys ?? [];
+  const stickyChildren = activeStickyHeaderKeys.length ? Children.toArray(children) : null;
+  const stickyHeaderIndices = stickyChildren
+    ? activeStickyHeaderKeys
+        .map((key) =>
+          stickyChildren.findIndex((child) => isValidElement(child) && String(child.key).includes(key)),
+        )
+        .filter((index) => index >= 0)
+    : undefined;
 
   if (!scroll) {
     return (
@@ -43,10 +56,31 @@ export function Screen({
       </SafeAreaView>
     );
   }
+  if (stickyChildren) {
+    return (
+      <SafeAreaView style={styles.safe} edges={edges}>
+        <ScrollView
+          {...props}
+          ref={scrollRef}
+          contentInsetAdjustmentBehavior={props.contentInsetAdjustmentBehavior ?? 'automatic'}
+          keyboardShouldPersistTaps="handled"
+          stickyHeaderIndices={stickyHeaderIndices}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: bottomClearance },
+            contentContainerStyle,
+          ]}
+        >
+          {stickyChildren}
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
   return (
     <SafeAreaView style={styles.safe} edges={edges}>
       <ScrollView
         {...props}
+        ref={scrollRef}
         contentInsetAdjustmentBehavior={props.contentInsetAdjustmentBehavior ?? 'automatic'}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: bottomClearance }}

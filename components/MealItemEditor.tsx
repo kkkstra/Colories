@@ -125,32 +125,36 @@ export function MealItemEditor({
       ) : null}
 
       <View style={styles.fields}>
-        <NumberField
-          label="重量 g"
-          value={item.weightGrams}
-          onChange={(value) => setNumber('weightGrams', value)}
-        />
-        <NumberField
-          label="热量 kcal"
-          value={item.calories}
-          onChange={(value) => setNumber('calories', value)}
-          highlight
-        />
-        <NumberField
-          label="蛋白质 g"
-          value={item.protein}
-          onChange={(value) => setNumber('protein', value)}
-        />
-        <NumberField
-          label="碳水 g"
-          value={item.carbs}
-          onChange={(value) => setNumber('carbs', value)}
-        />
-        <NumberField
-          label="脂肪 g"
-          value={item.fat}
-          onChange={(value) => setNumber('fat', value)}
-        />
+        <View style={styles.primaryFields}>
+          <NumberField
+            label="重量 g"
+            value={item.weightGrams}
+            onChange={(value) => setNumber('weightGrams', value)}
+          />
+          <NumberField
+            label="热量 kcal"
+            value={item.calories}
+            onChange={(value) => setNumber('calories', value)}
+            highlight
+          />
+        </View>
+        <View style={styles.macroFields}>
+          <NumberField
+            label="蛋白质 g"
+            value={item.protein}
+            onChange={(value) => setNumber('protein', value)}
+          />
+          <NumberField
+            label="碳水 g"
+            value={item.carbs}
+            onChange={(value) => setNumber('carbs', value)}
+          />
+          <NumberField
+            label="脂肪 g"
+            value={item.fat}
+            onChange={(value) => setNumber('fat', value)}
+          />
+        </View>
       </View>
     </Card>
   );
@@ -387,16 +391,21 @@ const styles = StyleSheet.create({
     opacity: 0.72,
   },
   fields: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+    gap: 11,
     padding: 16,
     paddingTop: 14,
   },
+  primaryFields: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  macroFields: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   numberField: {
-    width: '30%',
-    minWidth: 92,
-    flexGrow: 1,
+    flex: 1,
+    minWidth: 0,
     gap: 4,
   },
   fieldLabel: {
