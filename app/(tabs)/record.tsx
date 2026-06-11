@@ -9,47 +9,47 @@ import { MealItemEditor } from '@/components/MealItemEditor';
 import { AppButton } from '@/components/ui/AppButton';
 import { Card } from '@/components/ui/Card';
 import { ChoiceChips } from '@/components/ui/ChoiceChips';
-import { FormField } from '@/components/ui/FormField';
 import { MacroStrip } from '@/components/ui/MacroStrip';
 import { Screen } from '@/components/ui/Screen';
 import { theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
 import { AIProviderError, recognizeFoodImage } from '@/lib/ai';
 import { showAlert } from '@/lib/alert';
-import {
-  findFoodMatch,
-  saveMeal,
-  searchFoods,
-  type CatalogSearchRow,
-} from '@/lib/database';
+import { findFoodMatch, saveCustomFood, saveMeal } from '@/lib/database';
 import { prepareFoodImage } from '@/lib/image';
-import { scaleNutrition, sumMacros } from '@/lib/nutrition';
-import { createLocalId } from '@/lib/security';
+import {
+  createCustomFoodInputFromMealItem,
+  createMealItemDraftFromRecognition,
+} from '@/lib/mealItemDrafts';
+import { sumMacros } from '@/lib/nutrition';
 import { getApiKey } from '@/lib/secureStorage';
 import type { MealItemDraft, MealType } from '@/types/domain';
 
 export default function RecordScreen() {
   const db = useSQLiteContext();
-  const { loading, profile, providerConfig, hasApiKey } = useApp();
+  const {
+    loading,
+    profile,
+    providerConfig,
+    hasApiKey,
+    queuedMealItem,
+    clearQueuedMealItem,
+  } = useApp();
   const [mealType, setMealType] = useState<MealType>('lunch');
   const [items, setItems] = useState<MealItemDraft[]>([]);
   const [photoUri, setPhotoUri] = useState<string>();
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [searching, setSearching] = useState(false);
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<CatalogSearchRow[]>([]);
+  const [catalogSavingId, setCatalogSavingId] = useState<string>();
 
   useEffect(() => {
-    if (!searching) {
+    if (!queuedMealItem) {
       return;
     }
-    const timer = setTimeout(() => {
-      searchFoods(db, query, 16).then(setResults).catch(() => setResults([]));
-    }, 180);
-    return () => clearTimeout(timer);
-  }, [db, query, searching]);
+    setItems((current) => [...current, queuedMealItem]);
+    clearQueuedMealItem();
+  }, [clearQueuedMealItem, queuedMealItem]);
 
   if (!loading && !profile) {
     return <Redirect href="/onboarding" />;
@@ -112,28 +112,9 @@ export default function RecordScreen() {
       for (const food of recognized.foods) {
         const match = await findFoodMatch(db, food.name);
         if (match) {
-          drafts.push({
-            id: createLocalId('food'),
-            name: match.nameZh,
-            weightGrams: food.estimatedWeightGrams,
-            ...scaleNutrition(match, food.estimatedWeightGrams),
-            source: 'catalog',
-            catalogFoodId: match.id,
-            confidence: food.confidence,
-            cookingMethod: food.cookingMethod,
-            warning: food.warning,
-          });
+          drafts.push(createMealItemDraftFromRecognition(food, match));
         } else {
-          drafts.push({
-            id: createLocalId('food'),
-            name: food.name,
-            weightGrams: food.estimatedWeightGrams,
-            ...food.nutrition,
-            source: 'ai',
-            confidence: food.confidence,
-            cookingMethod: food.cookingMethod,
-            warning: food.warning,
-          });
+          drafts.push(createMealItemDraftFromRecognition(food));
         }
       }
       setItems(drafts);
@@ -153,42 +134,36 @@ export default function RecordScreen() {
     }
   };
 
-  const addCatalogFood = (food: CatalogSearchRow) => {
-    setItems((current) => [
-      ...current,
-      {
-        id: createLocalId('food'),
-        name: food.nameZh,
-        weightGrams: 100,
-        ...scaleNutrition(food, 100),
-        source: 'catalog',
-        catalogFoodId: food.id,
-      },
-    ]);
-    setSearching(false);
-    setQuery('');
-  };
-
-  const addCustomFood = () => {
-    setItems((current) => [
-      ...current,
-      {
-        id: createLocalId('food'),
-        name: query.trim() || '自定义食物',
-        weightGrams: 100,
-        calories: 0,
-        protein: 0,
-        carbs: 0,
-        fat: 0,
-        source: 'manual',
-      },
-    ]);
-    setSearching(false);
-    setQuery('');
-  };
-
   const updateItem = (index: number, nextItem: MealItemDraft) => {
     setItems((current) => current.map((item, itemIndex) => (itemIndex === index ? nextItem : item)));
+  };
+
+  const addItemToCatalog = async (item: MealItemDraft) => {
+    if (!item.name.trim()) {
+      showAlert('请先填写食物名称');
+      return;
+    }
+    setCatalogSavingId(item.id);
+    try {
+      const catalogFoodId = await saveCustomFood(db, createCustomFoodInputFromMealItem(item));
+      setItems((current) =>
+        current.map((currentItem) =>
+          currentItem.id === item.id
+            ? {
+                ...currentItem,
+                source: 'catalog',
+                catalogFoodId,
+                recognitionAlternatives: undefined,
+              }
+            : currentItem,
+        ),
+      );
+      showAlert('已加入食物库', '已保存为自定义食物，可在食物库继续编辑分类、别名和来源。');
+    } catch (error) {
+      showAlert('加入失败', error instanceof Error ? error.message : String(error));
+    } finally {
+      setCatalogSavingId(undefined);
+    }
   };
 
   const handleSave = async () => {
@@ -277,48 +252,14 @@ export default function RecordScreen() {
           <Text style={styles.itemCount}>{items.length}</Text>
         </View>
         <Pressable
-          accessibilityLabel={searching ? '关闭食物搜索' : '手动添加食物'}
+          accessibilityLabel="添加食物"
           accessibilityRole="button"
-          onPress={() => setSearching((value) => !value)}
+          onPress={() => router.push('/select-food')}
           style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
         >
-          <Ionicons name={searching ? 'close' : 'add'} size={20} color={theme.colors.primary} />
+          <Ionicons name="add" size={20} color={theme.colors.primary} />
         </Pressable>
       </View>
-
-      {searching ? (
-        <Card>
-          <FormField
-            label="搜索食物"
-            value={query}
-            onChangeText={setQuery}
-            placeholder="鸡胸肉、米饭、酸奶…"
-            autoFocus
-          />
-          <View style={styles.searchResults}>
-            {results.map((food) => (
-              <Pressable
-                key={food.id}
-                onPress={() => addCatalogFood(food)}
-                style={styles.searchRow}
-              >
-                <View style={styles.flex}>
-                  <Text style={styles.searchName}>{food.nameZh}</Text>
-                  <Text style={styles.muted}>
-                    100g · {Math.round(food.calories)} kcal
-                  </Text>
-                </View>
-                <Ionicons name="add" size={22} color={theme.colors.primary} />
-              </Pressable>
-            ))}
-          </View>
-          <AppButton
-            label={query.trim() ? `创建“${query.trim()}”` : '创建自定义食物'}
-            variant="secondary"
-            onPress={addCustomFood}
-          />
-        </Card>
-      ) : null}
 
       {items.length === 0 ? (
         <View style={styles.empty}>
@@ -333,6 +274,8 @@ export default function RecordScreen() {
             key={item.id}
             item={item}
             onChange={(nextItem) => updateItem(index, nextItem)}
+            onAddToCatalog={addItemToCatalog}
+            addingToCatalog={catalogSavingId === item.id}
             onRemove={() =>
               setItems((current) => current.filter((currentItem) => currentItem.id !== item.id))
             }
@@ -540,29 +483,6 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  searchResults: {
-    maxHeight: 330,
-  },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 11,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.colors.border,
-  },
-  flex: {
-    flex: 1,
-  },
-  searchName: {
-    color: theme.colors.text,
-    fontWeight: '800',
-  },
-  muted: {
-    color: theme.colors.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
   },
   empty: {
     minHeight: 104,

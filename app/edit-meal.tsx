@@ -8,7 +8,8 @@ import { AppButton } from '@/components/ui/AppButton';
 import { Screen } from '@/components/ui/Screen';
 import { theme } from '@/constants/Theme';
 import { showAlert } from '@/lib/alert';
-import { deleteMeal, getMealById, updateMealItems } from '@/lib/database';
+import { deleteMeal, getMealById, saveCustomFood, updateMealItems } from '@/lib/database';
+import { createCustomFoodInputFromMealItem } from '@/lib/mealItemDrafts';
 import { sumMacros } from '@/lib/nutrition';
 import type { MealItemDraft, MealRecord } from '@/types/domain';
 
@@ -19,6 +20,7 @@ export default function EditMealScreen() {
   const [meal, setMeal] = useState<MealRecord | null>(null);
   const [items, setItems] = useState<MealItemDraft[]>([]);
   const [saving, setSaving] = useState(false);
+  const [catalogSavingId, setCatalogSavingId] = useState<string>();
 
   useEffect(() => {
     if (!Number.isFinite(mealId)) {
@@ -69,6 +71,34 @@ export default function EditMealScreen() {
     ]);
   };
 
+  const addItemToCatalog = async (item: MealItemDraft) => {
+    if (!item.name.trim()) {
+      showAlert('请先填写食物名称');
+      return;
+    }
+    setCatalogSavingId(item.id);
+    try {
+      const catalogFoodId = await saveCustomFood(db, createCustomFoodInputFromMealItem(item));
+      setItems((current) =>
+        current.map((currentItem) =>
+          currentItem.id === item.id
+            ? {
+                ...currentItem,
+                source: 'catalog',
+                catalogFoodId,
+                recognitionAlternatives: undefined,
+              }
+            : currentItem,
+        ),
+      );
+      showAlert('已加入食物库', '已保存为自定义食物，可在食物库继续编辑分类、别名和来源。');
+    } catch (error) {
+      showAlert('加入失败', error instanceof Error ? error.message : String(error));
+    } finally {
+      setCatalogSavingId(undefined);
+    }
+  };
+
   return (
     <Screen>
       <View style={styles.header}>
@@ -87,6 +117,8 @@ export default function EditMealScreen() {
               current.map((currentItem, currentIndex) => (currentIndex === index ? next : currentItem)),
             )
           }
+          onAddToCatalog={addItemToCatalog}
+          addingToCatalog={catalogSavingId === item.id}
           onRemove={() =>
             setItems((current) => current.filter((currentItem) => currentItem.id !== item.id))
           }

@@ -7,9 +7,18 @@ import {
 } from '@/data/foodCatalog';
 
 describe('food catalog', () => {
-  it('ships the planned 200-300 localized entries', () => {
-    expect(FOOD_CATALOG.length).toBeGreaterThanOrEqual(200);
-    expect(FOOD_CATALOG.length).toBeLessThanOrEqual(300);
+  it('ships an expanded localized food library', () => {
+    expect(FOOD_CATALOG.length).toBeGreaterThanOrEqual(600);
+    expect(FOOD_CATALOG.length).toBeLessThanOrEqual(750);
+  });
+
+  it('keeps source references on every preset item', () => {
+    expect(FOOD_CATALOG.every((food) => food.sourceReference.length > 20)).toBe(true);
+    expect(
+      FOOD_CATALOG.every((food) =>
+        /USDA|香港食安中心|中国疾控|营养标签/.test(food.sourceReference),
+      ),
+    ).toBe(true);
   });
 
   it('matches Chinese aliases', () => {

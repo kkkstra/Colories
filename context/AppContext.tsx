@@ -19,7 +19,7 @@ import {
 } from '@/lib/database';
 import { calculateTargets } from '@/lib/nutrition';
 import { getApiKey, saveApiKey } from '@/lib/secureStorage';
-import type { AIProviderConfig, DailyTargets, UserProfile } from '@/types/domain';
+import type { AIProviderConfig, DailyTargets, MealItemDraft, UserProfile } from '@/types/domain';
 
 interface AppContextValue {
   loading: boolean;
@@ -27,10 +27,13 @@ interface AppContextValue {
   targets: DailyTargets | null;
   providerConfig: AIProviderConfig | null;
   hasApiKey: boolean;
+  queuedMealItem: MealItemDraft | null;
   refresh: () => Promise<void>;
   persistProfile: (profile: UserProfile, targets?: DailyTargets) => Promise<void>;
   persistTargets: (targets: DailyTargets) => Promise<void>;
   persistProvider: (config: AIProviderConfig, apiKey: string) => Promise<void>;
+  queueMealItem: (item: MealItemDraft) => void;
+  clearQueuedMealItem: () => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -42,6 +45,7 @@ export function AppProvider({ children }: PropsWithChildren) {
   const [targets, setTargets] = useState<DailyTargets | null>(null);
   const [providerConfig, setProviderConfig] = useState<AIProviderConfig | null>(null);
   const [hasApiKey, setHasApiKey] = useState(false);
+  const [queuedMealItem, setQueuedMealItem] = useState<MealItemDraft | null>(null);
 
   const refresh = useCallback(async () => {
     const [nextProfile, nextTargets, nextProvider, apiKey] = await Promise.all([
@@ -91,6 +95,14 @@ export function AppProvider({ children }: PropsWithChildren) {
     [db],
   );
 
+  const queueMealItem = useCallback((item: MealItemDraft) => {
+    setQueuedMealItem(item);
+  }, []);
+
+  const clearQueuedMealItem = useCallback(() => {
+    setQueuedMealItem(null);
+  }, []);
+
   const value = useMemo<AppContextValue>(
     () => ({
       loading,
@@ -98,12 +110,16 @@ export function AppProvider({ children }: PropsWithChildren) {
       targets,
       providerConfig,
       hasApiKey,
+      queuedMealItem,
       refresh,
       persistProfile,
       persistTargets,
       persistProvider,
+      queueMealItem,
+      clearQueuedMealItem,
     }),
     [
+      clearQueuedMealItem,
       hasApiKey,
       loading,
       persistProfile,
@@ -111,6 +127,8 @@ export function AppProvider({ children }: PropsWithChildren) {
       persistTargets,
       profile,
       providerConfig,
+      queueMealItem,
+      queuedMealItem,
       refresh,
       targets,
     ],

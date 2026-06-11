@@ -4,6 +4,16 @@ export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active' | 'ver
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 export type NutritionSource = 'catalog' | 'ai' | 'manual';
 export type AIResponseMode = 'json_schema' | 'json_object' | 'prompt_json';
+export type FoodCategory =
+  | 'staple'
+  | 'protein'
+  | 'vegetable'
+  | 'fruit'
+  | 'dairy'
+  | 'snack'
+  | 'dish'
+  | 'beverage'
+  | 'condiment';
 
 export interface MacroValues {
   calories: number;
@@ -29,9 +39,25 @@ export interface FoodCatalogItem extends MacroValues {
   id: string;
   nameZh: string;
   nameEn?: string;
-  category: string;
+  category: FoodCategory;
   aliases: string[];
   sourceReference: string;
+  isCustom?: boolean;
+}
+
+export type MealItemRecognitionChoice = 'ai' | 'catalog';
+
+export interface MealItemRecognitionOption extends MacroValues {
+  name: string;
+  source: NutritionSource;
+  catalogFoodId?: string;
+  warning?: string;
+}
+
+export interface MealItemRecognitionAlternatives {
+  selected: MealItemRecognitionChoice;
+  ai: MealItemRecognitionOption;
+  catalog: MealItemRecognitionOption;
 }
 
 export interface MealItemDraft extends MacroValues {
@@ -43,6 +69,7 @@ export interface MealItemDraft extends MacroValues {
   cookingMethod?: string;
   catalogFoodId?: string;
   warning?: string;
+  recognitionAlternatives?: MealItemRecognitionAlternatives;
 }
 
 export interface MealRecord {

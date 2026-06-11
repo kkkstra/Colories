@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -326,6 +327,15 @@ export default function SettingsScreen() {
         ) : null}
       </Card>
 
+      <Card style={styles.sectionCard}>
+        <NavigationSummary
+          icon="library-outline"
+          title="食物库"
+          value="预置来源可追溯，也可维护自己的食物"
+          onPress={() => router.push('/food-library')}
+        />
+      </Card>
+
       {profile ? (
         <Card style={styles.profileCard}>
           <View style={styles.profileHeader}>
@@ -413,6 +423,37 @@ function SectionSummary({
         size={19}
         color={theme.colors.textFaint}
       />
+    </Pressable>
+  );
+}
+
+function NavigationSummary({
+  icon,
+  title,
+  value,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  value: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.sectionSummary, pressed && styles.pressed]}
+    >
+      <View style={styles.sectionIcon}>
+        <Ionicons name={icon} size={22} color={theme.colors.primary} />
+      </View>
+      <View style={styles.flex}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <Text style={styles.sectionValue} numberOfLines={1}>
+          {value}
+        </Text>
+      </View>
+      <Ionicons name="chevron-forward" size={19} color={theme.colors.textFaint} />
     </Pressable>
   );
 }

@@ -29,10 +29,12 @@ describe('AI response handling', () => {
 
   it('builds each supported response mode', () => {
     const base = { baseUrl: 'https://example.com/v1', model: 'vision-model' };
-    expect(
-      buildRequestBody({ ...base, responseMode: 'json_schema' }, 'data:image/jpeg;base64,x')
-        .response_format,
-    ).toMatchObject({ type: 'json_schema' });
+    const jsonSchemaBody = buildRequestBody(
+      { ...base, responseMode: 'json_schema' },
+      'data:image/jpeg;base64,x',
+    );
+    expect(jsonSchemaBody.response_format).toMatchObject({ type: 'json_schema' });
+    expect(JSON.stringify(jsonSchemaBody)).toContain('通用、简洁的中文食物库名称');
     expect(
       buildRequestBody({ ...base, responseMode: 'json_object' }, 'data:image/jpeg;base64,x')
         .response_format,
