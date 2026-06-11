@@ -1,7 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import * as DocumentPicker from 'expo-document-picker';
 import { router } from 'expo-router';
+import * as Sharing from 'expo-sharing';
+import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { Card } from '@/components/ui/Card';
@@ -16,8 +19,16 @@ import {
   testProviderConfiguration,
 } from '@/lib/ai';
 import { showAlert } from '@/lib/alert';
+import {
+  createDataExportFile,
+  importDataFile,
+  type DataExportResult,
+  type DataImportResult,
+  type ImportMode,
+} from '@/lib/dataTransfer';
 import { calculateTargets } from '@/lib/nutrition';
 import { clearApiKey, getApiKey } from '@/lib/secureStorage';
+import { syncTodayNutritionWidget } from '@/lib/widgetSync';
 import type { DailyTargets, UserProfile } from '@/types/domain';
 
 type ProviderFeedback = {
@@ -26,6 +37,7 @@ type ProviderFeedback = {
 };
 
 type ExpandedSection = 'profile' | 'provider' | 'targets' | null;
+type TransferBusy = 'export' | 'import' | null;
 
 const DEFAULT_PROFILE: UserProfile = {
   age: 28,
@@ -55,7 +67,13 @@ const GOAL_OPTIONS = [
   { label: '增肌', value: 'gain', icon: 'trending-up' },
 ] as const;
 
+const IMPORT_MODE_OPTIONS = [
+  { label: '覆盖恢复', value: 'replace', icon: 'refresh' },
+  { label: '合并追加', value: 'merge', icon: 'add-circle-outline' },
+] as const;
+
 export default function SettingsScreen() {
+  const db = useSQLiteContext();
   const {
     profile,
     targets,
@@ -77,6 +95,8 @@ export default function SettingsScreen() {
   const [profileDraft, setProfileDraft] = useState<UserProfile>(profile ?? DEFAULT_PROFILE);
   const [savingTargets, setSavingTargets] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [transferBusy, setTransferBusy] = useState<TransferBusy>(null);
+  const [importMode, setImportMode] = useState<ImportMode>('replace');
   const [expandedSection, setExpandedSection] = useState<ExpandedSection>(
     hasApiKey ? null : 'provider',
   );
@@ -251,6 +271,85 @@ export default function SettingsScreen() {
 
   const toggleSection = (section: Exclude<ExpandedSection, null>) => {
     setExpandedSection((current) => (current === section ? null : section));
+  };
+
+  const handleExportData = async () => {
+    if (Platform.OS === 'web') {
+      showAlert('导出暂不支持 Web', '请在 iOS 或 Android 使用系统分享导出备份文件。');
+      return;
+    }
+
+    setTransferBusy('export');
+    try {
+      const available = await Sharing.isAvailableAsync();
+      if (!available) {
+        showAlert('无法打开分享面板', '当前设备不支持系统文件分享。');
+        return;
+      }
+      const exported = await createDataExportFile(db);
+      await Sharing.shareAsync(exported.uri, {
+        mimeType: 'application/json',
+        UTI: 'public.json',
+        dialogTitle: '导出燃卡数据',
+      });
+      showAlert('导出完成', formatExportResult(exported));
+    } catch (error) {
+      showAlert('导出失败', getErrorMessage(error));
+    } finally {
+      setTransferBusy(null);
+    }
+  };
+
+  const handleImportData = () => {
+    showAlert(
+      importMode === 'replace' ? '覆盖恢复数据？' : '合并导入数据？',
+      importMode === 'replace'
+        ? '当前饮食记录、目标、自定义食物和 AI 配置会被备份替换，API Key 会被清除。'
+        : '备份中的餐次、照片和自定义食物会追加到当前数据中。',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: importMode === 'replace' ? '覆盖导入' : '合并导入',
+          style: importMode === 'replace' ? 'destructive' : 'default',
+          onPress: () => {
+            void pickAndImportData();
+          },
+        },
+      ],
+    );
+  };
+
+  const pickAndImportData = async () => {
+    setTransferBusy('import');
+    try {
+      const picked = await DocumentPicker.getDocumentAsync({
+        base64: false,
+        copyToCacheDirectory: true,
+        multiple: false,
+        type: ['application/json', 'text/json', '*/*'],
+      });
+      if (picked.canceled) {
+        return;
+      }
+      const asset = picked.assets[0];
+      if (!asset) {
+        showAlert('没有选择文件');
+        return;
+      }
+
+      const imported = await importDataFile(db, asset.uri, importMode);
+      if (importMode === 'replace') {
+        await clearApiKey();
+        setApiKey('');
+      }
+      await refresh();
+      await syncTodayNutritionWidget(db);
+      showAlert('导入完成', formatImportResult(imported));
+    } catch (error) {
+      showAlert('导入失败', getErrorMessage(error));
+    } finally {
+      setTransferBusy(null);
+    }
   };
 
   const recommendedTargets = calculateTargets(profileDraft);
@@ -557,6 +656,43 @@ export default function SettingsScreen() {
             accessibilityLabel="API Key 保存在系统安全存储中"
           />
         </View>
+        <View style={styles.transferPanel}>
+          <View style={styles.transferHeader}>
+            <Text style={styles.transferTitle}>备份</Text>
+            <Text style={styles.transferMeta}>照片随备份保存，API Key 不导出</Text>
+          </View>
+          <View style={styles.importModeGroup}>
+            <Text style={styles.groupLabel}>导入方式</Text>
+            <ChoiceChips
+              value={importMode}
+              onChange={setImportMode}
+              options={IMPORT_MODE_OPTIONS}
+              adaptive
+              columns={2}
+            />
+          </View>
+          <View style={styles.transferActions}>
+            <View style={styles.transferButton}>
+              <AppButton
+                label="导出数据"
+                icon="download-outline"
+                variant="secondary"
+                onPress={handleExportData}
+                loading={transferBusy === 'export'}
+                disabled={transferBusy !== null}
+              />
+            </View>
+            <View style={styles.transferButton}>
+              <AppButton
+                label="导入数据"
+                icon="cloud-upload-outline"
+                onPress={handleImportData}
+                loading={transferBusy === 'import'}
+                disabled={transferBusy !== null}
+              />
+            </View>
+          </View>
+        </View>
         <View style={styles.disclaimer}>
           <Ionicons name="information-circle-outline" size={17} color={theme.colors.warning} />
           <Text style={styles.disclaimerText}>识别和营养结果仅供日常记录。</Text>
@@ -705,6 +841,22 @@ function responseModeLabel(mode: string): string {
   if (mode === 'json_schema') return 'JSON Schema';
   if (mode === 'json_object') return 'JSON Object';
   return '提示词 JSON';
+}
+
+function formatExportResult(result: DataExportResult): string {
+  const skipped = result.stats.skippedPhotos
+    ? `，${result.stats.skippedPhotos} 张照片未找到`
+    : '';
+  return `已准备 ${result.stats.meals} 条饮食记录、${result.stats.customFoods} 个自定义食物和 ${result.stats.photos} 张照片${skipped}。`;
+}
+
+function formatImportResult(result: DataImportResult): string {
+  const skipped = result.photosSkipped ? `，${result.photosSkipped} 张照片未恢复` : '';
+  return `${result.mode === 'replace' ? '已覆盖恢复' : '已合并导入'} ${result.meals} 条饮食记录、${result.customFoods} 个自定义食物和 ${result.photosRestored} 张照片${skipped}。`;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 const styles = StyleSheet.create({
@@ -1000,6 +1152,41 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     fontSize: 11,
     fontWeight: '800',
+  },
+  transferPanel: {
+    gap: 12,
+    padding: 12,
+    borderRadius: 14,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+    boxShadow: theme.shadows.small,
+  },
+  transferHeader: {
+    gap: 3,
+  },
+  transferTitle: {
+    color: theme.colors.text,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  transferMeta: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
+  },
+  importModeGroup: {
+    gap: 8,
+  },
+  transferActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  transferButton: {
+    flex: 1,
+    minWidth: 0,
   },
   disclaimer: {
     flexDirection: 'row',
