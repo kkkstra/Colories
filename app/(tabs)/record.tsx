@@ -3,7 +3,7 @@ import { Redirect, router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { MealItemEditor } from '@/components/MealItemEditor';
 import { AppButton } from '@/components/ui/AppButton';
@@ -383,13 +383,11 @@ export default function RecordScreen() {
 
       <PhotoGallery photos={displayPhotos} onRemovePhoto={handleRemovePhoto} />
 
-      <AppButton
-        label="AI 识别当前图片"
-        icon="sparkles-outline"
+      <AIRecognizeButton
         onPress={handleRecognizeImages}
-        variant="secondary"
         loading={processing === 'recognizing'}
         disabled={busy || foodImages.length === 0}
+        photoCount={foodImages.length}
       />
 
       {items.length > 0 ? (
@@ -506,6 +504,67 @@ function PhotoButton({
   );
 }
 
+function AIRecognizeButton({
+  onPress,
+  loading,
+  disabled,
+  photoCount,
+}: {
+  onPress: () => void;
+  loading: boolean;
+  disabled: boolean;
+  photoCount: number;
+}) {
+  return (
+    <Pressable
+      accessibilityLabel="AI 识别当前图片"
+      accessibilityRole="button"
+      disabled={disabled || loading}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.aiRecognizeButton,
+        disabled && styles.aiRecognizeButtonDisabled,
+        pressed && styles.aiRecognizeButtonPressed,
+      ]}
+    >
+      <View style={[styles.aiRecognizeIcon, disabled && styles.aiRecognizeIconDisabled]}>
+        <Ionicons
+          name="sparkles"
+          size={23}
+          color={disabled ? theme.colors.primary : '#FFFFFF'}
+        />
+      </View>
+      <View style={styles.aiRecognizeTextWrap}>
+        <Text
+          style={[
+            styles.aiRecognizeTitle,
+            disabled && styles.aiRecognizeTitleDisabled,
+          ]}
+        >
+          AI 识别
+        </Text>
+        <Text
+          style={[
+            styles.aiRecognizeMeta,
+            disabled && styles.aiRecognizeMetaDisabled,
+          ]}
+        >
+          {photoCount > 0 ? `当前 ${photoCount} 张图片` : '添加图片后可用'}
+        </Text>
+      </View>
+      {loading ? (
+        <ActivityIndicator color="#FFFFFF" size="small" />
+      ) : (
+        <Ionicons
+          name="chevron-forward"
+          size={21}
+          color={disabled ? theme.colors.primary : '#FFFFFF'}
+        />
+      )}
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
@@ -579,6 +638,62 @@ const styles = StyleSheet.create({
   },
   photoButtonTextPrimary: {
     color: '#FFFFFF',
+  },
+  aiRecognizeButton: {
+    minHeight: 74,
+    borderRadius: 20,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.primary,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 13,
+    boxShadow: theme.shadows.primary,
+  },
+  aiRecognizeButtonDisabled: {
+    backgroundColor: theme.colors.surfaceRaised,
+    borderColor: '#D9E2FF',
+    boxShadow: theme.shadows.small,
+  },
+  aiRecognizeButtonPressed: {
+    transform: [{ translateY: 1 }],
+    opacity: 0.92,
+  },
+  aiRecognizeIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    borderCurve: 'continuous',
+    backgroundColor: 'rgba(255,255,255,0.17)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiRecognizeIconDisabled: {
+    backgroundColor: theme.colors.primarySoft,
+  },
+  aiRecognizeTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  aiRecognizeTitle: {
+    color: '#FFFFFF',
+    fontSize: 19,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  aiRecognizeTitleDisabled: {
+    color: theme.colors.text,
+  },
+  aiRecognizeMeta: {
+    color: 'rgba(255,255,255,0.76)',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  aiRecognizeMetaDisabled: {
+    color: theme.colors.textMuted,
   },
   disabled: {
     opacity: 0.5,

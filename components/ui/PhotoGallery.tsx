@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Image,
   Modal,
@@ -28,6 +28,7 @@ interface Props {
 
 export function PhotoGallery({ photos, onRemovePhoto }: Props) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const isClosingViewerRef = useRef(false);
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const singlePreviewWidth = Math.max(240, Math.min(680, width - 40));
@@ -38,11 +39,26 @@ export function PhotoGallery({ photos, onRemovePhoto }: Props) {
       : (['top', 'right', 'bottom', 'left'] as const);
 
   useEffect(() => {
+    if (photos.length === 0) {
+      isClosingViewerRef.current = true;
+      setSelectedIndex(null);
+      return;
+    }
     if (selectedIndex === null || selectedIndex < photos.length) {
       return;
     }
     setSelectedIndex(photos.length > 0 ? photos.length - 1 : null);
   }, [photos.length, selectedIndex]);
+
+  const openViewer = (index: number) => {
+    isClosingViewerRef.current = false;
+    setSelectedIndex(index);
+  };
+
+  const closeViewer = () => {
+    isClosingViewerRef.current = true;
+    setSelectedIndex(null);
+  };
 
   if (photos.length === 0) {
     return null;
@@ -66,7 +82,7 @@ export function PhotoGallery({ photos, onRemovePhoto }: Props) {
             <Pressable
               accessibilityLabel={`查看第 ${index + 1} 张图片`}
               accessibilityRole="imagebutton"
-              onPress={() => setSelectedIndex(index)}
+              onPress={() => openViewer(index)}
               style={({ pressed }) => [styles.previewOpenButton, pressed && styles.pressed]}
             >
               <Image source={{ uri: photo.uri }} resizeMode="cover" style={styles.previewImage} />
@@ -93,7 +109,7 @@ export function PhotoGallery({ photos, onRemovePhoto }: Props) {
 
       <Modal
         animationType="fade"
-        onRequestClose={() => setSelectedIndex(null)}
+        onRequestClose={closeViewer}
         transparent
         visible={selectedIndex !== null}
       >
@@ -114,7 +130,7 @@ export function PhotoGallery({ photos, onRemovePhoto }: Props) {
               accessibilityLabel="关闭图片预览"
               accessibilityRole="button"
               hitSlop={Platform.OS === 'ios' ? 12 : undefined}
-              onPress={() => setSelectedIndex(null)}
+              onPress={closeViewer}
               style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
             >
               <Ionicons name="close" size={24} color="#FFFFFF" />
@@ -127,6 +143,9 @@ export function PhotoGallery({ photos, onRemovePhoto }: Props) {
             showsHorizontalScrollIndicator={false}
             contentOffset={{ x: (selectedIndex ?? 0) * width, y: 0 }}
             onMomentumScrollEnd={(event) => {
+              if (isClosingViewerRef.current || selectedIndex === null) {
+                return;
+              }
               const nextIndex = Math.round(event.nativeEvent.contentOffset.x / width);
               setSelectedIndex(Math.min(photos.length - 1, Math.max(0, nextIndex)));
             }}

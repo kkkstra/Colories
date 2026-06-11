@@ -263,7 +263,6 @@ export default function SettingsScreen() {
         <SectionSummary
           icon="person"
           title="身体"
-          value={`${profileDraft.age} 岁 · ${profileDraft.heightCm} cm · ${profileDraft.weightKg} kg`}
           expanded={expandedSection === 'profile'}
           onPress={() => toggleSection('profile')}
         />
@@ -360,7 +359,6 @@ export default function SettingsScreen() {
         <SectionSummary
           icon="speedometer"
           title="每日目标"
-          value={`${Math.round(targetDraft.calories)} kcal`}
           expanded={expandedSection === 'targets'}
           onPress={() => toggleSection('targets')}
         />
@@ -421,7 +419,6 @@ export default function SettingsScreen() {
         <NavigationSummary
           icon="library-outline"
           title="食物库"
-          value="预置来源可追溯，也可维护自己的食物"
           onPress={() => router.push('/food-library')}
         />
       </Card>
@@ -579,7 +576,7 @@ function SectionSummary({
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
-  value: string;
+  value?: string;
   active?: boolean;
   expanded: boolean;
   onPress: () => void;
@@ -596,12 +593,14 @@ function SectionSummary({
       </View>
       <View style={styles.flex}>
         <Text style={styles.sectionTitle}>{title}</Text>
-        <View style={styles.valueRow}>
-          {active ? <View style={styles.activeDot} /> : null}
-          <Text style={[styles.sectionValue, active && styles.sectionValueActive]} numberOfLines={1}>
-            {value}
-          </Text>
-        </View>
+        {value ? (
+          <View style={styles.valueRow}>
+            {active ? <View style={styles.activeDot} /> : null}
+            <Text style={[styles.sectionValue, active && styles.sectionValueActive]} numberOfLines={1}>
+              {value}
+            </Text>
+          </View>
+        ) : null}
       </View>
       <Ionicons
         name={expanded ? 'chevron-up' : 'chevron-down'}
@@ -620,7 +619,7 @@ function NavigationSummary({
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
-  value: string;
+  value?: string;
   onPress: () => void;
 }) {
   return (
@@ -634,9 +633,11 @@ function NavigationSummary({
       </View>
       <View style={styles.flex}>
         <Text style={styles.sectionTitle}>{title}</Text>
-        <Text style={styles.sectionValue} numberOfLines={1}>
-          {value}
-        </Text>
+        {value ? (
+          <Text style={styles.sectionValue} numberOfLines={1}>
+            {value}
+          </Text>
+        ) : null}
       </View>
       <Ionicons name="chevron-forward" size={19} color={theme.colors.textFaint} />
     </Pressable>

@@ -135,8 +135,11 @@ export default function InsightsScreen() {
   }
 
   const calorieTarget = targets?.calories ?? 2000;
-  const totalCalories = summaries.reduce((sum, day) => sum + day.calories, 0);
-  const averageCalories = summaries.length > 0 ? Math.round(totalCalories / summaries.length) : 0;
+  const summaryData = buildInsightAdviceData(summaries);
+  const recordedSummaries = summaryData.recordedDays;
+  const totalCalories = recordedSummaries.reduce((sum, day) => sum + day.calories, 0);
+  const averageCalories =
+    recordedSummaries.length > 0 ? Math.round(totalCalories / recordedSummaries.length) : 0;
   const latest = summaries[0] ?? {
     dateKey: dates[0],
     calories: 0,
@@ -145,7 +148,7 @@ export default function InsightsScreen() {
     fat: 0,
   };
   const maxCalories = Math.max(calorieTarget, ...summaries.map((day) => day.calories), 1);
-  const activeDays = summaries.filter((day) => day.calories > 0).length;
+  const activeDays = recordedSummaries.length;
 
   return (
     <Screen>
@@ -162,7 +165,7 @@ export default function InsightsScreen() {
       <Card variant="prominent" style={styles.hero}>
         <View style={styles.heroTop}>
           <View>
-            <Text style={styles.heroLabel}>日均摄入</Text>
+            <Text style={styles.heroLabel}>记录日均</Text>
             <View style={styles.calorieRow}>
               <Text style={styles.calorieValue}>{averageCalories}</Text>
               <Text style={styles.calorieUnit}>kcal</Text>

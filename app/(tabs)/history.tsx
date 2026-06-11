@@ -69,6 +69,7 @@ export default function HistoryScreen() {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={styles.dateScroller}
         contentContainerStyle={styles.dateRail}
       >
         {dates.map((dateKey) => {
@@ -258,7 +259,11 @@ const styles = StyleSheet.create({
   },
   dateRail: {
     gap: 8,
+    paddingHorizontal: 8,
     paddingVertical: 6,
+  },
+  dateScroller: {
+    marginHorizontal: -8,
   },
   dateCardShadow: {
     width: 58,
