@@ -94,10 +94,6 @@ export default function HistoryScreen() {
     <Screen>
       <View style={styles.header}>
         <Text style={styles.title}>历史</Text>
-        <View style={styles.period}>
-          <Ionicons name="calendar-outline" size={16} color={theme.colors.primary} />
-          <Text style={styles.periodText}>日历</Text>
-        </View>
       </View>
 
       <Card variant="base" style={styles.calendarCard}>
@@ -116,10 +112,17 @@ export default function HistoryScreen() {
             <Text style={styles.calendarMonthTitle}>
               {calendarExpanded ? visibleMonthLabel : weekRangeLabel}
             </Text>
-            <Text style={styles.calendarMeta}>
-              {calendarExpanded ? '整月' : '选中周'}
-            </Text>
           </View>
+
+          <Pressable
+            accessibilityLabel="回到今天"
+            accessibilityRole="button"
+            hitSlop={8}
+            onPress={() => selectDate(todayDateKey)}
+            style={({ pressed }) => [styles.calendarTodayButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.calendarTodayButtonText}>今</Text>
+          </Pressable>
 
           <Pressable
             accessibilityLabel={calendarExpanded ? '下个月' : '下一周'}
@@ -132,17 +135,15 @@ export default function HistoryScreen() {
           </Pressable>
 
           <Pressable
+            accessibilityLabel={calendarExpanded ? '收起日历' : '展开日历'}
             accessibilityRole="button"
             accessibilityState={{ expanded: calendarExpanded }}
             onPress={() => setCalendarExpanded((current) => !current)}
             style={({ pressed }) => [styles.calendarExpandButton, pressed && styles.pressed]}
           >
-            <Text style={styles.calendarToggleActionText}>
-              {calendarExpanded ? '收起' : '展开'}
-            </Text>
             <Ionicons
               name={calendarExpanded ? 'chevron-up' : 'chevron-down'}
-              size={17}
+              size={18}
               color={theme.colors.primary}
             />
           </Pressable>
@@ -425,20 +426,6 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: -1.1,
   },
-  period: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: theme.colors.primarySoft,
-  },
-  periodText: {
-    color: theme.colors.primary,
-    fontSize: 12,
-    fontWeight: '900',
-  },
   calendarCard: {
     padding: 0,
     overflow: 'hidden',
@@ -456,26 +443,27 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  calendarMeta: {
-    marginTop: 2,
-    color: theme.colors.textMuted,
-    fontSize: 12,
-    fontWeight: '800',
+  calendarTodayButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 13,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarTodayButtonText: {
+    color: theme.colors.primary,
+    fontSize: 13,
+    fontWeight: '900',
   },
   calendarExpandButton: {
-    minHeight: 36,
-    minWidth: 74,
-    paddingHorizontal: 12,
+    width: 36,
+    height: 36,
     borderRadius: 18,
     backgroundColor: theme.colors.surfaceTint,
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-  },
-  calendarToggleActionText: {
-    color: theme.colors.primary,
-    fontSize: 12,
-    fontWeight: '900',
+    justifyContent: 'center',
   },
   calendarBody: {
     borderTopWidth: 1,
