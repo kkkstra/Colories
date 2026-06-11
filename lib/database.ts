@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { FOOD_CATALOG } from '@/data/foodCatalog';
 import { endOfLocalDayIso, startOfLocalDayIso, toLocalDateKey } from '@/lib/date';
+import { resolveMealTitle } from '@/lib/mealTitle';
 import { sumMacros } from '@/lib/nutrition';
 import { normalizeMealPhotoReference } from '@/lib/photoReference';
 import { createLocalId } from '@/lib/security';
@@ -17,7 +18,7 @@ import type {
   UserProfile,
 } from '@/types/domain';
 
-export const DATABASE_VERSION = 2;
+export const DATABASE_VERSION = 3;
 
 export const MIGRATION_V1_SQL = `
 PRAGMA journal_mode = WAL;
@@ -109,6 +110,10 @@ CREATE INDEX IF NOT EXISTS idx_food_catalog_category ON food_catalog(category);
 CREATE INDEX IF NOT EXISTS idx_food_catalog_custom ON food_catalog(is_custom);
 `;
 
+export const MIGRATION_V3_SQL = `
+ALTER TABLE meals ADD COLUMN title TEXT;
+`;
+
 export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
   const versionRow = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   const currentVersion = versionRow?.user_version ?? 0;
@@ -117,6 +122,9 @@ export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
   }
   if (currentVersion < 2) {
     await db.execAsync(MIGRATION_V2_SQL);
+  }
+  if (currentVersion < 3) {
+    await db.execAsync(MIGRATION_V3_SQL);
   }
   await seedFoodCatalog(db);
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
@@ -648,6 +656,7 @@ export async function saveMeal(
   input: {
     eatenAt: string;
     mealType: MealType;
+    title?: string;
     photoUri?: string;
     notes?: string;
     items: MealItemDraft[];
@@ -656,12 +665,14 @@ export async function saveMeal(
   let mealId = 0;
   await db.withTransactionAsync(async () => {
     const now = new Date().toISOString();
+    const title = resolveMealTitle(input.title, input.items);
     const result = await db.runAsync(
-      `INSERT INTO meals (eaten_at, date_key, meal_type, photo_uri, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO meals (eaten_at, date_key, meal_type, title, photo_uri, notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       input.eatenAt,
       toLocalDateKey(new Date(input.eatenAt)),
       input.mealType,
+      title ?? null,
       normalizeMealPhotoReference(input.photoUri) ?? null,
       input.notes ?? null,
       now,
@@ -695,18 +706,21 @@ export async function updateMeal(
   input: {
     eatenAt: string;
     mealType: MealType;
+    title?: string;
     notes?: string;
     items: MealItemDraft[];
   },
 ): Promise<void> {
   await db.withTransactionAsync(async () => {
+    const title = resolveMealTitle(input.title, input.items);
     await db.runAsync(
       `UPDATE meals
-       SET eaten_at = ?, date_key = ?, meal_type = ?, notes = ?, updated_at = ?
+       SET eaten_at = ?, date_key = ?, meal_type = ?, title = ?, notes = ?, updated_at = ?
        WHERE id = ?`,
       input.eatenAt,
       toLocalDateKey(new Date(input.eatenAt)),
       input.mealType,
+      title ?? null,
       input.notes?.trim() || null,
       new Date().toISOString(),
       mealId,
@@ -752,10 +766,11 @@ export async function getMealsForDate(
     id: number;
     eaten_at: string;
     meal_type: MealType;
+    title: string | null;
     photo_uri: string | null;
     notes: string | null;
   }>(
-    `SELECT id, eaten_at, meal_type, photo_uri, notes
+    `SELECT id, eaten_at, meal_type, title, photo_uri, notes
      FROM meals WHERE date_key = ? ORDER BY eaten_at DESC`,
     dateKey,
   );
@@ -794,6 +809,7 @@ export async function getMealsForDate(
         id: meal.id,
         eatenAt: meal.eaten_at,
         mealType: meal.meal_type,
+        title: meal.title ?? undefined,
         photoUri: meal.photo_uri ?? undefined,
         notes: meal.notes ?? undefined,
         items,

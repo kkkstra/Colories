@@ -14,6 +14,7 @@ import { showAlert } from '@/lib/alert';
 import { deleteMeal, getMealById, saveCustomFood, updateMeal } from '@/lib/database';
 import { resolveStoredPhotoUri } from '@/lib/image';
 import { createCustomFoodInputFromMealItem } from '@/lib/mealItemDrafts';
+import { createMealTitle, resolveMealTitle } from '@/lib/mealTitle';
 import { sumMacros } from '@/lib/nutrition';
 import { syncTodayNutritionWidget } from '@/lib/widgetSync';
 import type { MealItemDraft, MealRecord, MealType } from '@/types/domain';
@@ -36,6 +37,7 @@ export default function EditMealScreen() {
   const [meal, setMeal] = useState<MealRecord | null>(null);
   const [items, setItems] = useState<MealItemDraft[]>([]);
   const [mealType, setMealType] = useState<MealType>('lunch');
+  const [mealTitle, setMealTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [catalogSavingId, setCatalogSavingId] = useState<string>();
@@ -48,6 +50,7 @@ export default function EditMealScreen() {
       setMeal(nextMeal);
       setItems(nextMeal?.items ?? []);
       setMealType(nextMeal?.mealType ?? 'lunch');
+      setMealTitle(nextMeal?.title ?? createMealTitle(nextMeal?.items ?? []) ?? '');
       setNotes(nextMeal?.notes ?? '');
     });
   }, [db, mealId]);
@@ -73,6 +76,7 @@ export default function EditMealScreen() {
       await updateMeal(db, meal.id, {
         eatenAt: meal.eatenAt,
         mealType,
+        title: resolveMealTitle(mealTitle, items),
         notes: nextNotes,
         items,
       });
@@ -148,6 +152,13 @@ export default function EditMealScreen() {
             })}
           </Text>
         </View>
+        <FormField
+          label="标题"
+          value={mealTitle}
+          onChangeText={setMealTitle}
+          placeholder="例如：鸡腿饭配青菜"
+          style={styles.titleInput}
+        />
         <ChoiceChips value={mealType} onChange={setMealType} options={MEAL_TYPE_OPTIONS} />
         <FormField
           label="备注"
@@ -255,6 +266,9 @@ const styles = StyleSheet.create({
     minHeight: 78,
     paddingTop: 12,
     textAlignVertical: 'top',
+  },
+  titleInput: {
+    fontWeight: '900',
   },
   total: {
     backgroundColor: theme.colors.ink,

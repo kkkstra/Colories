@@ -76,6 +76,7 @@ export interface MealRecord {
   id: number;
   eatenAt: string;
   mealType: MealType;
+  title?: string;
   photoUri?: string;
   notes?: string;
   items: MealItemDraft[];
@@ -118,6 +119,7 @@ export interface AIRecognizedFood {
 }
 
 export interface FoodRecognitionResult {
+  mealTitle?: string;
   foods: AIRecognizedFood[];
   warnings: string[];
 }

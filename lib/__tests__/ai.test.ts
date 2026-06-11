@@ -8,6 +8,7 @@ import {
 } from '@/lib/ai';
 
 const validContent = JSON.stringify({
+  meal_title: '香煎鸡胸肉',
   foods: [
     {
       name: '鸡胸肉',
@@ -23,6 +24,7 @@ const validContent = JSON.stringify({
 describe('AI response handling', () => {
   it('parses fenced JSON and marks low confidence food', () => {
     const parsed = parseRecognitionContent(`\`\`\`json\n${validContent}\n\`\`\``);
+    expect(parsed.mealTitle).toBe('香煎鸡胸肉');
     expect(parsed.foods[0].name).toBe('鸡胸肉');
     expect(parsed.foods[0].warning).toContain('把握较低');
   });
@@ -34,6 +36,7 @@ describe('AI response handling', () => {
       'data:image/jpeg;base64,x',
     );
     expect(jsonSchemaBody.response_format).toMatchObject({ type: 'json_schema' });
+    expect(JSON.stringify(jsonSchemaBody)).toContain('meal_title');
     expect(JSON.stringify(jsonSchemaBody)).toContain('通用、简洁的中文食物库名称');
     expect(
       buildRequestBody({ ...base, responseMode: 'json_object' }, 'data:image/jpeg;base64,x')

@@ -4,6 +4,7 @@ import {
   DATABASE_VERSION,
   MIGRATION_V1_SQL,
   MIGRATION_V2_SQL,
+  MIGRATION_V3_SQL,
   migrateDatabase,
   saveCustomFood,
   scoreFoodNameMatch,
@@ -25,6 +26,7 @@ describe('database migration', () => {
     }
     expect(MIGRATION_V2_SQL).toContain('ADD COLUMN is_custom');
     expect(MIGRATION_V2_SQL).toContain('ADD COLUMN updated_at');
+    expect(MIGRATION_V3_SQL).toContain('ADD COLUMN title');
   });
 
   it('seeds catalog and advances user_version on a fresh database', async () => {
@@ -44,6 +46,7 @@ describe('database migration', () => {
 
     expect(execAsync).toHaveBeenCalledWith(MIGRATION_V1_SQL);
     expect(execAsync).toHaveBeenCalledWith(MIGRATION_V2_SQL);
+    expect(execAsync).toHaveBeenCalledWith(MIGRATION_V3_SQL);
     expect(execAsync).toHaveBeenLastCalledWith(`PRAGMA user_version = ${DATABASE_VERSION}`);
     expect(runAsync.mock.calls.some(([sql]) => String(sql).includes('food_catalog'))).toBe(true);
   });
@@ -93,6 +96,7 @@ describe('database migration', () => {
     await updateMeal(db as never, 12, {
       eatenAt: '2026-06-11T12:10:00.000Z',
       mealType: 'lunch',
+      title: '牛肉饭套餐',
       notes: '少油',
       items: [
         {
@@ -110,6 +114,7 @@ describe('database migration', () => {
 
     expect(runAsync.mock.calls[0][0]).toContain('UPDATE meals');
     expect(runAsync.mock.calls[0]).toContain('lunch');
+    expect(runAsync.mock.calls[0]).toContain('牛肉饭套餐');
     expect(runAsync.mock.calls[0]).toContain('少油');
     expect(runAsync.mock.calls.some(([sql]) => String(sql).includes('DELETE FROM meal_items'))).toBe(true);
     expect(runAsync.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO meal_items'))).toBe(true);

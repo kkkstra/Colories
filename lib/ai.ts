@@ -1,4 +1,5 @@
 import { clampNumber } from '@/lib/nutrition';
+import { normalizeMealTitle } from '@/lib/mealTitle';
 import { safeErrorMessage } from '@/lib/security';
 import type {
   AIProviderConfig,
@@ -15,8 +16,9 @@ const TEST_IMAGE =
 const RESPONSE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['foods', 'warnings'],
+  required: ['meal_title', 'foods', 'warnings'],
   properties: {
+    meal_title: { type: 'string' },
     foods: {
       type: 'array',
       items: {
@@ -176,12 +178,13 @@ export function buildRequestBody(
   isTest = false,
 ): Record<string, unknown> {
   const instruction = isTest
-    ? '这是一次能力测试。即使图片里没有食物，也必须返回 foods 空数组和 warnings 数组。'
+    ? '这是一次能力测试。即使图片里没有食物，也必须返回 meal_title 空字符串、foods 空数组和 warnings 数组。'
     : `识别图片中所有可见食物并估算可食用重量、烹饪方式、热量、蛋白质、碳水和脂肪。
 重量和营养值必须对应图片中本次可见份量，不是每100克。无法判断时降低 confidence 并写入 warning。
 优先输出通用、简洁的中文食物库名称，例如“白米饭”“鸡胸肉”“番茄炒蛋”“牛肉面”，不要输出冗长描述或品牌名。
 如果是组合餐且能看出常见菜名，优先输出常见菜名；看不出时拆成主要可见食材。
-不要把餐具、包装或桌面识别为食物。`;
+不要把餐具、包装或桌面识别为食物。
+同时生成 meal_title，用 4-12 个中文字符概括这一餐，例如“鸡腿饭配青菜”“咖啡和贝果”。不要写热量、时间段或“健康餐”这类泛称。`;
 
   const body: Record<string, unknown> = {
     model: config.model.trim(),
@@ -198,7 +201,7 @@ export function buildRequestBody(
           { type: 'image_url', image_url: { url: imageDataUri } },
           {
             type: 'text',
-            text: `${instruction}\nJSON 字段：foods, warnings；每个 food 包含 name, estimated_weight_grams, cooking_method, confidence, nutrition(calories, protein, carbs, fat), warning。`,
+            text: `${instruction}\nJSON 字段：meal_title, foods, warnings；每个 food 包含 name, estimated_weight_grams, cooking_method, confidence, nutrition(calories, protein, carbs, fat), warning。`,
           },
         ],
       },
@@ -237,10 +240,13 @@ export function parseRecognitionContent(content: string): FoodRecognitionResult 
   }
 
   const foods = parsed.foods.map(parseFood).filter((food): food is AIRecognizedFood => food !== null);
+  const mealTitle = typeof parsed.meal_title === 'string'
+    ? normalizeMealTitle(parsed.meal_title)
+    : undefined;
   const warnings = Array.isArray(parsed.warnings)
     ? parsed.warnings.filter((value): value is string => typeof value === 'string')
     : [];
-  return { foods, warnings };
+  return { mealTitle, foods, warnings };
 }
 
 function parseFood(value: unknown): AIRecognizedFood | null {

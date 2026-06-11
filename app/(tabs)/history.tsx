@@ -12,6 +12,7 @@ import { theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
 import { formatChineseDate, recentDateKeys, toLocalDateKey } from '@/lib/date';
 import { getDayTotals, getMealsForDate, type DaySummary } from '@/lib/database';
+import { getMealDisplayTitle } from '@/lib/mealTitle';
 import type { MealRecord, MealType } from '@/types/domain';
 
 const MEAL_LABELS: Record<MealType, string> = {
@@ -159,7 +160,7 @@ export default function HistoryScreen() {
                       })}
                     </Text>
                     <Text style={styles.foods} numberOfLines={1}>
-                      {meal.items.map((item) => item.name).join('、')}
+                      {getMealDisplayTitle(meal)}
                     </Text>
                   </View>
                   <Text style={styles.mealCalories}>{Math.round(meal.totals.calories)}</Text>

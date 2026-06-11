@@ -22,6 +22,7 @@ import {
   createMealItemDraftFromRecognition,
 } from '@/lib/mealItemDrafts';
 import { inferMealTypeFromDate } from '@/lib/mealTiming';
+import { createMealTitle, resolveMealTitle } from '@/lib/mealTitle';
 import { sumMacros } from '@/lib/nutrition';
 import { getApiKey } from '@/lib/secureStorage';
 import { syncTodayNutritionWidget } from '@/lib/widgetSync';
@@ -38,6 +39,7 @@ export default function RecordScreen() {
     clearQueuedMealItem,
   } = useApp();
   const [mealType, setMealType] = useState<MealType>(() => inferMealTypeFromDate());
+  const [mealTitle, setMealTitle] = useState('');
   const [items, setItems] = useState<MealItemDraft[]>([]);
   const [photoUri, setPhotoUri] = useState<string>();
   const [notes, setNotes] = useState('');
@@ -52,6 +54,13 @@ export default function RecordScreen() {
     setItems((current) => [...current, queuedMealItem]);
     clearQueuedMealItem();
   }, [clearQueuedMealItem, queuedMealItem]);
+
+  useEffect(() => {
+    if (items.length === 0 || mealTitle.trim()) {
+      return;
+    }
+    setMealTitle(createMealTitle(items) ?? '');
+  }, [items, mealTitle]);
 
   if (!loading && !profile) {
     return <Redirect href="/onboarding" />;
@@ -120,6 +129,7 @@ export default function RecordScreen() {
         }
       }
       setItems(drafts);
+      setMealTitle(recognized.mealTitle ?? createMealTitle(drafts) ?? '');
       if (drafts.length === 0) {
         showAlert('没有识别到食物', '请换一张更清晰的照片，或使用手动录入。');
       } else if (recognized.warnings.length > 0) {
@@ -182,12 +192,14 @@ export default function RecordScreen() {
       await saveMeal(db, {
         eatenAt: new Date().toISOString(),
         mealType,
+        title: resolveMealTitle(mealTitle, items),
         photoUri,
         notes: notes.trim() || undefined,
         items,
       });
       await syncTodayNutritionWidget(db);
       setItems([]);
+      setMealTitle('');
       setPhotoUri(undefined);
       setNotes('');
       showAlert('已保存', '本餐记录已写入本机。', [
@@ -249,6 +261,19 @@ export default function RecordScreen() {
       ) : null}
 
       {displayPhotoUri ? <Image source={{ uri: displayPhotoUri }} style={styles.photo} /> : null}
+
+      {items.length > 0 ? (
+        <View style={styles.mealTitleWrap}>
+          <Ionicons name="sparkles-outline" size={19} color={theme.colors.primary} />
+          <TextInput
+            value={mealTitle}
+            onChangeText={setMealTitle}
+            placeholder="AI 会总结这一餐"
+            placeholderTextColor={theme.colors.textFaint}
+            style={styles.mealTitleInput}
+          />
+        </View>
+      ) : null}
 
       <View style={styles.sectionHeader}>
         <View style={styles.sectionTitleRow}>
@@ -562,6 +587,24 @@ const styles = StyleSheet.create({
     minHeight: 50,
     color: theme.colors.text,
     fontSize: 14,
+  },
+  mealTitleWrap: {
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    borderRadius: 15,
+    backgroundColor: theme.colors.surface,
+    paddingHorizontal: 14,
+  },
+  mealTitleInput: {
+    flex: 1,
+    minHeight: 52,
+    color: theme.colors.text,
+    fontSize: 17,
+    fontWeight: '900',
   },
   disclaimer: {
     color: theme.colors.textFaint,
