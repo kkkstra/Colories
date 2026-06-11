@@ -1,13 +1,19 @@
 import type { PropsWithChildren } from 'react';
-import { StyleSheet, View, type ViewProps } from 'react-native';
+import { StyleSheet, type ViewProps } from 'react-native';
+import Animated, { Easing, FadeIn, LinearTransition } from 'react-native-reanimated';
 
 import { theme } from '@/constants/Theme';
 
 export function Card({ style, children, ...props }: PropsWithChildren<ViewProps>) {
   return (
-    <View style={[styles.card, style]} {...props}>
+    <Animated.View
+      entering={FadeIn.duration(120).easing(Easing.out(Easing.cubic))}
+      layout={LinearTransition.duration(160).easing(Easing.out(Easing.cubic))}
+      style={[styles.card, style]}
+      {...props}
+    >
       {children}
-    </View>
+    </Animated.View>
   );
 }
 

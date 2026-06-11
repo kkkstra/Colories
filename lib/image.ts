@@ -3,6 +3,12 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { Platform } from 'react-native';
 
 import { fitWithin } from '@/lib/imageDimensions';
+import {
+  MEAL_PHOTO_DIRECTORY,
+  createMealPhotoReference,
+  extractMealPhotoReference,
+  joinDocumentPhotoUri,
+} from '@/lib/photoReference';
 import { createLocalId } from '@/lib/security';
 
 const MAX_UPLOAD_EDGE = 1600;
@@ -76,11 +82,33 @@ export async function prepareFoodImage(
 }
 
 async function persistThumbnail(uri: string): Promise<string> {
-  const photosDirectory = new Directory(Paths.document, 'meal-photos');
+  const photosDirectory = new Directory(Paths.document, MEAL_PHOTO_DIRECTORY);
   photosDirectory.create({ idempotent: true, intermediates: true });
-  const persistentThumbnail = new File(photosDirectory, `${createLocalId('meal')}.jpg`);
+  const fileName = `${createLocalId('meal')}.jpg`;
+  const persistentThumbnail = new File(photosDirectory, fileName);
   await new File(uri).copy(persistentThumbnail);
-  return persistentThumbnail.uri;
+  return createMealPhotoReference(fileName);
+}
+
+export function resolveStoredPhotoUri(uri: string | undefined): string | undefined {
+  if (!uri) {
+    return undefined;
+  }
+  if (
+    Platform.OS === 'web' ||
+    uri.startsWith('data:') ||
+    uri.startsWith('blob:') ||
+    uri.startsWith('http://') ||
+    uri.startsWith('https://')
+  ) {
+    return uri;
+  }
+
+  const reference = extractMealPhotoReference(uri);
+  if (!reference) {
+    return uri;
+  }
+  return joinDocumentPhotoUri(Paths.document.uri, reference);
 }
 
 function toJpegDataUri(base64: string | undefined): string {

@@ -66,6 +66,25 @@
         {
           "configureAndroidBackup": true
         }
+      ],
+      [
+        "expo-widgets",
+        {
+          "bundleIdentifier": "com.patrick.caloriesai.widgets",
+          "groupIdentifier": "group.com.patrick.caloriesai",
+          "widgets": [
+            {
+              "name": "TodayNutritionWidget",
+              "displayName": "今日营养",
+              "description": "查看今日热量和三大营养素进度。",
+              "contentMarginsDisabled": true,
+              "supportedFamilies": [
+                "systemSmall",
+                "systemMedium"
+              ]
+            }
+          ]
+        }
       ]
     ],
     "experiments": {

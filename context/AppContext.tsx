@@ -19,6 +19,7 @@ import {
 } from '@/lib/database';
 import { calculateTargets } from '@/lib/nutrition';
 import { getApiKey, saveApiKey } from '@/lib/secureStorage';
+import { syncTodayNutritionWidget } from '@/lib/widgetSync';
 import type { AIProviderConfig, DailyTargets, MealItemDraft, UserProfile } from '@/types/domain';
 
 interface AppContextValue {
@@ -59,6 +60,7 @@ export function AppProvider({ children }: PropsWithChildren) {
     setProviderConfig(nextProvider);
     setHasApiKey(Boolean(apiKey));
     setLoading(false);
+    syncTodayNutritionWidget(db).catch(() => {});
   }, [db]);
 
   useEffect(() => {
@@ -74,6 +76,7 @@ export function AppProvider({ children }: PropsWithChildren) {
       });
       setProfile(nextProfile);
       setTargets(nextTargets);
+      syncTodayNutritionWidget(db).catch(() => {});
     },
     [db],
   );
@@ -82,6 +85,7 @@ export function AppProvider({ children }: PropsWithChildren) {
     async (nextTargets: DailyTargets) => {
       await saveDefaultTargets(db, nextTargets);
       setTargets(nextTargets);
+      syncTodayNutritionWidget(db).catch(() => {});
     },
     [db],
   );

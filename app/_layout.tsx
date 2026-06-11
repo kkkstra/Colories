@@ -1,11 +1,10 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { DefaultTheme, router, Stack, ThemeProvider } from 'expo-router';
+import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { SQLiteProvider } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import 'react-native-reanimated';
 
+import { AppHeader } from '@/components/ui/AppHeader';
 import { AppProvider } from '@/context/AppContext';
 import { theme } from '@/constants/Theme';
 import { migrateDatabase } from '@/lib/database';
@@ -16,27 +15,7 @@ export const unstable_settings = {
   initialRouteName: '(tabs)',
 };
 
-function HeaderBackButton() {
-  const handleBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-    router.replace('/');
-  };
-
-  return (
-    <Pressable
-      accessibilityLabel="返回上一页"
-      accessibilityRole="button"
-      hitSlop={10}
-      onPress={handleBack}
-      style={({ pressed }) => [styles.headerBackButton, pressed && styles.pressed]}
-    >
-      <Ionicons name="chevron-back" size={24} color={theme.colors.primary} />
-    </Pressable>
-  );
-}
+const COMPACT_HEADER_ROUTES = new Set(['select-food', 'edit-food', 'edit-meal']);
 
 export default function RootLayout() {
   const navigationTheme = {
@@ -57,12 +36,12 @@ export default function RootLayout() {
           <AppProvider>
             <Stack
               screenOptions={{
-                headerBackVisible: false,
-                headerLeft: () => <HeaderBackButton />,
-                headerShadowVisible: false,
-                headerStyle: { backgroundColor: theme.colors.background },
-                headerTitleAlign: 'center',
-                headerTitleStyle: styles.headerTitle,
+                header: ({ options, route }) => (
+                  <AppHeader
+                    title={resolveHeaderTitle(options)}
+                    compactTopInset={COMPACT_HEADER_ROUTES.has(route.name)}
+                  />
+                ),
               }}
             >
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -84,27 +63,6 @@ export default function RootLayout() {
   );
 }
 
-const styles = StyleSheet.create({
-  headerBackButton: {
-    width: 42,
-    height: 42,
-    marginLeft: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 14,
-    borderCurve: 'continuous',
-    borderWidth: 1,
-    borderColor: 'rgba(39, 93, 255, 0.16)',
-    backgroundColor: theme.colors.primarySoft,
-  },
-  headerTitle: {
-    color: theme.colors.text,
-    fontSize: 18,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  pressed: {
-    opacity: 0.72,
-    transform: [{ translateY: 1 }],
-  },
-});
+function resolveHeaderTitle(options: { title?: string; headerTitle?: unknown }): string | undefined {
+  return typeof options.headerTitle === 'string' ? options.headerTitle : options.title;
+}

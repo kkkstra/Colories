@@ -82,6 +82,26 @@ export interface MealRecord {
   totals: MacroValues;
 }
 
+export interface NutritionWidgetSnapshot {
+  dateKey: string;
+  consumedCalories: number;
+  targetCalories: number;
+  remainingCalories: number;
+  calorieProgress: number;
+  protein: number;
+  proteinTarget: number;
+  proteinProgress: number;
+  carbs: number;
+  carbsTarget: number;
+  carbsProgress: number;
+  fat: number;
+  fatTarget: number;
+  fatProgress: number;
+  statusLabel: string;
+  updatedAtLabel: string;
+  hasTargets: boolean;
+}
+
 export interface AIProviderConfig {
   baseUrl: string;
   model: string;

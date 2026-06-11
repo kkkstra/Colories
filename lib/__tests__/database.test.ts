@@ -7,6 +7,7 @@ import {
   migrateDatabase,
   saveCustomFood,
   scoreFoodNameMatch,
+  updateMeal,
 } from '@/lib/database';
 
 describe('database migration', () => {
@@ -80,5 +81,37 @@ describe('database migration', () => {
     expect(scoreFoodNameMatch('牛肉盖浇饭', ['牛肉饭'])).toBeGreaterThanOrEqual(68);
     expect(scoreFoodNameMatch('西红柿炒鸡蛋', ['番茄炒蛋', '西红柿炒鸡蛋'])).toBeGreaterThanOrEqual(80);
     expect(scoreFoodNameMatch('可乐鸡翅', ['可乐'])).toBeLessThan(68);
+  });
+
+  it('updates meal metadata and items together', async () => {
+    const runAsync = vi.fn().mockResolvedValue({ lastInsertRowId: 1, changes: 1 });
+    const db = {
+      runAsync,
+      withTransactionAsync: async (callback: () => Promise<void>) => callback(),
+    };
+
+    await updateMeal(db as never, 12, {
+      eatenAt: '2026-06-11T12:10:00.000Z',
+      mealType: 'lunch',
+      notes: '少油',
+      items: [
+        {
+          id: 'item-1',
+          name: '牛肉饭',
+          weightGrams: 300,
+          calories: 620,
+          protein: 25,
+          carbs: 82,
+          fat: 20,
+          source: 'manual',
+        },
+      ],
+    });
+
+    expect(runAsync.mock.calls[0][0]).toContain('UPDATE meals');
+    expect(runAsync.mock.calls[0]).toContain('lunch');
+    expect(runAsync.mock.calls[0]).toContain('少油');
+    expect(runAsync.mock.calls.some(([sql]) => String(sql).includes('DELETE FROM meal_items'))).toBe(true);
+    expect(runAsync.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO meal_items'))).toBe(true);
   });
 });

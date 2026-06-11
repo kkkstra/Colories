@@ -5,13 +5,29 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { MealItemEditor } from '@/components/MealItemEditor';
 import { AppButton } from '@/components/ui/AppButton';
+import { Card } from '@/components/ui/Card';
+import { ChoiceChips } from '@/components/ui/ChoiceChips';
+import { FormField } from '@/components/ui/FormField';
 import { Screen } from '@/components/ui/Screen';
 import { theme } from '@/constants/Theme';
 import { showAlert } from '@/lib/alert';
-import { deleteMeal, getMealById, saveCustomFood, updateMealItems } from '@/lib/database';
+import { deleteMeal, getMealById, saveCustomFood, updateMeal } from '@/lib/database';
+import { resolveStoredPhotoUri } from '@/lib/image';
 import { createCustomFoodInputFromMealItem } from '@/lib/mealItemDrafts';
 import { sumMacros } from '@/lib/nutrition';
-import type { MealItemDraft, MealRecord } from '@/types/domain';
+import { syncTodayNutritionWidget } from '@/lib/widgetSync';
+import type { MealItemDraft, MealRecord, MealType } from '@/types/domain';
+
+const MEAL_TYPE_OPTIONS: Array<{
+  label: string;
+  value: MealType;
+  icon: 'sunny-outline' | 'restaurant-outline' | 'moon-outline' | 'cafe-outline';
+}> = [
+  { label: '早餐', value: 'breakfast', icon: 'sunny-outline' },
+  { label: '午餐', value: 'lunch', icon: 'restaurant-outline' },
+  { label: '晚餐', value: 'dinner', icon: 'moon-outline' },
+  { label: '加餐', value: 'snack', icon: 'cafe-outline' },
+];
 
 export default function EditMealScreen() {
   const db = useSQLiteContext();
@@ -19,6 +35,8 @@ export default function EditMealScreen() {
   const mealId = Number(id);
   const [meal, setMeal] = useState<MealRecord | null>(null);
   const [items, setItems] = useState<MealItemDraft[]>([]);
+  const [mealType, setMealType] = useState<MealType>('lunch');
+  const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [catalogSavingId, setCatalogSavingId] = useState<string>();
 
@@ -29,6 +47,8 @@ export default function EditMealScreen() {
     getMealById(db, mealId).then((nextMeal) => {
       setMeal(nextMeal);
       setItems(nextMeal?.items ?? []);
+      setMealType(nextMeal?.mealType ?? 'lunch');
+      setNotes(nextMeal?.notes ?? '');
     });
   }, [db, mealId]);
 
@@ -41,6 +61,7 @@ export default function EditMealScreen() {
   }
 
   const totals = sumMacros(items);
+  const displayPhotoUri = resolveStoredPhotoUri(meal.photoUri);
   const handleSave = async () => {
     if (items.length === 0) {
       showAlert('至少保留一种食物，或删除整餐记录。');
@@ -48,7 +69,14 @@ export default function EditMealScreen() {
     }
     setSaving(true);
     try {
-      await updateMealItems(db, meal.id, items);
+      const nextNotes = notes.trim() || undefined;
+      await updateMeal(db, meal.id, {
+        eatenAt: meal.eatenAt,
+        mealType,
+        notes: nextNotes,
+        items,
+      });
+      await syncTodayNutritionWidget(db);
       router.back();
     } catch (error) {
       showAlert('保存失败', error instanceof Error ? error.message : String(error));
@@ -65,6 +93,7 @@ export default function EditMealScreen() {
         style: 'destructive',
         onPress: async () => {
           await deleteMeal(db, meal.id);
+          await syncTodayNutritionWidget(db);
           router.back();
         },
       },
@@ -107,7 +136,29 @@ export default function EditMealScreen() {
         </View>
         <Text style={styles.title}>编辑记录</Text>
       </View>
-      {meal.photoUri ? <Image source={{ uri: meal.photoUri }} style={styles.photo} /> : null}
+      <Card style={styles.metaCard}>
+        <View style={styles.metaTitleRow}>
+          <Text style={styles.metaTitle}>本餐信息</Text>
+          <Text style={styles.timeText}>
+            {new Date(meal.eatenAt).toLocaleString('zh-CN', {
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </Text>
+        </View>
+        <ChoiceChips value={mealType} onChange={setMealType} options={MEAL_TYPE_OPTIONS} />
+        <FormField
+          label="备注"
+          value={notes}
+          onChangeText={setNotes}
+          placeholder="口味、场景或份量修正…"
+          multiline
+          style={styles.notesInput}
+        />
+      </Card>
+      {displayPhotoUri ? <Image source={{ uri: displayPhotoUri }} style={styles.photo} /> : null}
       {items.map((item, index) => (
         <MealItemEditor
           key={item.id}
@@ -179,6 +230,31 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 250,
     borderRadius: theme.radius.large,
+  },
+  metaCard: {
+    gap: 13,
+  },
+  metaTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  metaTitle: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  timeText: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
+  notesInput: {
+    minHeight: 78,
+    paddingTop: 12,
+    textAlignVertical: 'top',
   },
   total: {
     backgroundColor: theme.colors.ink,

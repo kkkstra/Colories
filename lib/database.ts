@@ -3,6 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { FOOD_CATALOG } from '@/data/foodCatalog';
 import { endOfLocalDayIso, startOfLocalDayIso, toLocalDateKey } from '@/lib/date';
 import { sumMacros } from '@/lib/nutrition';
+import { normalizeMealPhotoReference } from '@/lib/photoReference';
 import { createLocalId } from '@/lib/security';
 import type {
   AIProviderConfig,
@@ -661,7 +662,7 @@ export async function saveMeal(
       input.eatenAt,
       toLocalDateKey(new Date(input.eatenAt)),
       input.mealType,
-      input.photoUri ?? null,
+      normalizeMealPhotoReference(input.photoUri) ?? null,
       input.notes ?? null,
       now,
       now,
@@ -685,6 +686,35 @@ export async function updateMealItems(
       await insertMealItem(db, mealId, item);
     }
     await db.runAsync('UPDATE meals SET updated_at = ? WHERE id = ?', new Date().toISOString(), mealId);
+  });
+}
+
+export async function updateMeal(
+  db: SQLiteDatabase,
+  mealId: number,
+  input: {
+    eatenAt: string;
+    mealType: MealType;
+    notes?: string;
+    items: MealItemDraft[];
+  },
+): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `UPDATE meals
+       SET eaten_at = ?, date_key = ?, meal_type = ?, notes = ?, updated_at = ?
+       WHERE id = ?`,
+      input.eatenAt,
+      toLocalDateKey(new Date(input.eatenAt)),
+      input.mealType,
+      input.notes?.trim() || null,
+      new Date().toISOString(),
+      mealId,
+    );
+    await db.runAsync('DELETE FROM meal_items WHERE meal_id = ?', mealId);
+    for (const item of input.items) {
+      await insertMealItem(db, mealId, item);
+    }
   });
 }
 

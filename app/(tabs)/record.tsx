@@ -16,13 +16,15 @@ import { useApp } from '@/context/AppContext';
 import { AIProviderError, recognizeFoodImage } from '@/lib/ai';
 import { showAlert } from '@/lib/alert';
 import { findFoodMatch, saveCustomFood, saveMeal } from '@/lib/database';
-import { prepareFoodImage } from '@/lib/image';
+import { prepareFoodImage, resolveStoredPhotoUri } from '@/lib/image';
 import {
   createCustomFoodInputFromMealItem,
   createMealItemDraftFromRecognition,
 } from '@/lib/mealItemDrafts';
+import { inferMealTypeFromDate } from '@/lib/mealTiming';
 import { sumMacros } from '@/lib/nutrition';
 import { getApiKey } from '@/lib/secureStorage';
+import { syncTodayNutritionWidget } from '@/lib/widgetSync';
 import type { MealItemDraft, MealType } from '@/types/domain';
 
 export default function RecordScreen() {
@@ -35,7 +37,7 @@ export default function RecordScreen() {
     queuedMealItem,
     clearQueuedMealItem,
   } = useApp();
-  const [mealType, setMealType] = useState<MealType>('lunch');
+  const [mealType, setMealType] = useState<MealType>(() => inferMealTypeFromDate());
   const [items, setItems] = useState<MealItemDraft[]>([]);
   const [photoUri, setPhotoUri] = useState<string>();
   const [notes, setNotes] = useState('');
@@ -184,6 +186,7 @@ export default function RecordScreen() {
         notes: notes.trim() || undefined,
         items,
       });
+      await syncTodayNutritionWidget(db);
       setItems([]);
       setPhotoUri(undefined);
       setNotes('');
@@ -198,6 +201,7 @@ export default function RecordScreen() {
   };
 
   const totals = sumMacros(items);
+  const displayPhotoUri = resolveStoredPhotoUri(photoUri);
 
   return (
     <Screen>
@@ -244,7 +248,7 @@ export default function RecordScreen() {
         </Card>
       ) : null}
 
-      {photoUri ? <Image source={{ uri: photoUri }} style={styles.photo} /> : null}
+      {displayPhotoUri ? <Image source={{ uri: displayPhotoUri }} style={styles.photo} /> : null}
 
       <View style={styles.sectionHeader}>
         <View style={styles.sectionTitleRow}>

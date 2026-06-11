@@ -4,8 +4,8 @@ import {
   ScrollView,
   type ScrollViewProps,
   StyleSheet,
-  View,
 } from 'react-native';
+import Animated, { Easing, FadeIn, LinearTransition } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { theme } from '@/constants/Theme';
@@ -33,9 +33,13 @@ export function Screen({
   if (!scroll) {
     return (
       <SafeAreaView style={styles.safe} edges={edges}>
-        <View style={[styles.content, { paddingBottom: bottomClearance }, contentContainerStyle]}>
+        <Animated.View
+          entering={FadeIn.duration(140).easing(Easing.out(Easing.cubic))}
+          layout={LinearTransition.duration(160).easing(Easing.out(Easing.cubic))}
+          style={[styles.content, { paddingBottom: bottomClearance }, contentContainerStyle]}
+        >
           {children}
-        </View>
+        </Animated.View>
       </SafeAreaView>
     );
   }
@@ -45,13 +49,15 @@ export function Screen({
         {...props}
         contentInsetAdjustmentBehavior={props.contentInsetAdjustmentBehavior ?? 'automatic'}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[
-          styles.content,
-          { paddingBottom: bottomClearance },
-          contentContainerStyle,
-        ]}
+        contentContainerStyle={{ paddingBottom: bottomClearance }}
       >
-        {children}
+        <Animated.View
+          entering={FadeIn.duration(120).easing(Easing.out(Easing.cubic))}
+          layout={LinearTransition.duration(160).easing(Easing.out(Easing.cubic))}
+          style={[styles.content, contentContainerStyle]}
+        >
+          {children}
+        </Animated.View>
       </ScrollView>
     </SafeAreaView>
   );
