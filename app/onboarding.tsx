@@ -1,6 +1,6 @@
 import { Redirect, router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { Card } from '@/components/ui/Card';
@@ -9,6 +9,7 @@ import { FormField } from '@/components/ui/FormField';
 import { Screen } from '@/components/ui/Screen';
 import { theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
+import { showAlert } from '@/lib/alert';
 import { calculateTargets } from '@/lib/nutrition';
 import type { ActivityLevel, BiologicalSex, FitnessGoal, UserProfile } from '@/types/domain';
 
@@ -48,7 +49,7 @@ export default function OnboardingScreen() {
       draft.weightKg < 30 ||
       draft.weightKg > 300
     ) {
-      Alert.alert('请检查身体信息', '年龄、身高或体重超出合理范围。');
+      showAlert('请检查身体信息', '年龄、身高或体重超出合理范围。');
       return;
     }
     setSaving(true);
@@ -56,7 +57,7 @@ export default function OnboardingScreen() {
       await persistProfile(draft, targets);
       router.replace('/');
     } catch (error) {
-      Alert.alert('保存失败', error instanceof Error ? error.message : String(error));
+      showAlert('保存失败', error instanceof Error ? error.message : String(error));
     } finally {
       setSaving(false);
     }

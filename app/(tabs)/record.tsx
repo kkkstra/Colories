@@ -4,7 +4,6 @@ import * as ImagePicker from 'expo-image-picker';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
 import {
-  Alert,
   Image,
   Pressable,
   StyleSheet,
@@ -22,6 +21,7 @@ import { MealItemEditor } from '@/components/MealItemEditor';
 import { theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
 import { AIProviderError, recognizeFoodImage } from '@/lib/ai';
+import { showAlert } from '@/lib/alert';
 import {
   findFoodMatch,
   saveMeal,
@@ -68,7 +68,7 @@ export default function RecordScreen() {
     if (source === 'camera') {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('需要相机权限', '请在系统设置中允许相机权限，或改用相册和手动录入。');
+        showAlert('需要相机权限', '请在系统设置中允许相机权限，或改用相册和手动录入。');
         return;
       }
     }
@@ -95,7 +95,7 @@ export default function RecordScreen() {
       const prepared = await prepareFoodImage(asset.uri, asset.width, asset.height);
       setPhotoUri(prepared.thumbnailUri);
       if (!providerConfig || !hasApiKey) {
-        Alert.alert(
+        showAlert(
           '尚未配置 AI',
           '照片已准备好。请先到设置中填写兼容接口，或直接使用本地食物库手动记录。',
           [
@@ -144,16 +144,16 @@ export default function RecordScreen() {
       }
       setItems(drafts);
       if (drafts.length === 0) {
-        Alert.alert('没有识别到食物', '请换一张更清晰的照片，或使用手动录入。');
+        showAlert('没有识别到食物', '请换一张更清晰的照片，或使用手动录入。');
       } else if (recognized.warnings.length > 0) {
-        Alert.alert('识别完成', recognized.warnings.join('\n'));
+        showAlert('识别完成', recognized.warnings.join('\n'));
       }
     } catch (error) {
       const message =
         error instanceof AIProviderError || error instanceof Error
           ? error.message
           : String(error);
-      Alert.alert('识别失败', `${message}\n你仍可使用本地食物库手动记录。`);
+      showAlert('识别失败', `${message}\n你仍可使用本地食物库手动记录。`);
     } finally {
       setBusy(false);
     }
@@ -199,11 +199,11 @@ export default function RecordScreen() {
 
   const handleSave = async () => {
     if (items.length === 0) {
-      Alert.alert('还没有食物', '请先识别照片或手动添加至少一种食物。');
+      showAlert('还没有食物', '请先识别照片或手动添加至少一种食物。');
       return;
     }
     if (items.some((item) => !item.name.trim())) {
-      Alert.alert('请填写食物名称');
+      showAlert('请填写食物名称');
       return;
     }
     setSaving(true);
@@ -218,11 +218,11 @@ export default function RecordScreen() {
       setItems([]);
       setPhotoUri(undefined);
       setNotes('');
-      Alert.alert('已保存', '本餐记录已写入本机。', [
+      showAlert('已保存', '本餐记录已写入本机。', [
         { text: '查看今日', onPress: () => router.replace('/(tabs)') },
       ]);
     } catch (error) {
-      Alert.alert('保存失败', error instanceof Error ? error.message : String(error));
+      showAlert('保存失败', error instanceof Error ? error.message : String(error));
     } finally {
       setSaving(false);
     }

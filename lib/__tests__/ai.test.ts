@@ -62,6 +62,55 @@ describe('AI response handling', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('uses a vision-compatible image for capability testing', async () => {
+    const fetchMock = vi.fn().mockImplementation((_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      const imageDataUri = body.messages[1].content[0].image_url.url as string;
+      const imageBytes = Buffer.from(imageDataUri.split(',')[1], 'base64');
+
+      expect(imageDataUri).toMatch(/^data:image\/png;base64,/);
+      expect(imageBytes.readUInt32BE(16)).toBeGreaterThanOrEqual(10);
+      expect(imageBytes.readUInt32BE(20)).toBeGreaterThanOrEqual(10);
+
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ choices: [{ message: { content: validContent } }] }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+    });
+
+    await testProviderConfiguration(
+      { baseUrl: 'https://example.com/v1', model: 'vision-model' },
+      'secret-key',
+      fetchMock as typeof fetch,
+    );
+  });
+
+  it('shows nested provider error messages without dumping the response envelope', async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: 'The image format is illegal and cannot be opened',
+              code: 'invalid_parameter_error',
+            },
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    );
+
+    await expect(
+      testProviderConfiguration(
+        { baseUrl: 'https://example.com/v1', model: 'vision-model' },
+        'secret-key',
+        fetchMock as typeof fetch,
+      ),
+    ).rejects.toThrow('The image format is illegal and cannot be opened');
+  });
+
   it.each([
     [401, 'auth'],
     [429, 'rate_limit'],

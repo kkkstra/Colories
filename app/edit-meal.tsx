@@ -1,12 +1,13 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { Alert, Image, StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { MealItemEditor } from '@/components/MealItemEditor';
 import { AppButton } from '@/components/ui/AppButton';
 import { Screen } from '@/components/ui/Screen';
 import { theme } from '@/constants/Theme';
+import { showAlert } from '@/lib/alert';
 import { deleteMeal, getMealById, updateMealItems } from '@/lib/database';
 import { sumMacros } from '@/lib/nutrition';
 import type { MealItemDraft, MealRecord } from '@/types/domain';
@@ -40,7 +41,7 @@ export default function EditMealScreen() {
   const totals = sumMacros(items);
   const handleSave = async () => {
     if (items.length === 0) {
-      Alert.alert('至少保留一种食物，或删除整餐记录。');
+      showAlert('至少保留一种食物，或删除整餐记录。');
       return;
     }
     setSaving(true);
@@ -48,14 +49,14 @@ export default function EditMealScreen() {
       await updateMealItems(db, meal.id, items);
       router.back();
     } catch (error) {
-      Alert.alert('保存失败', error instanceof Error ? error.message : String(error));
+      showAlert('保存失败', error instanceof Error ? error.message : String(error));
     } finally {
       setSaving(false);
     }
   };
 
   const confirmDelete = () => {
-    Alert.alert('删除整餐记录？', '此操作无法撤销。', [
+    showAlert('删除整餐记录？', '此操作无法撤销。', [
       { text: '取消', style: 'cancel' },
       {
         text: '删除',

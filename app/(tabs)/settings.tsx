@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { Card } from '@/components/ui/Card';
@@ -13,9 +13,15 @@ import {
   DASHSCOPE_PRESET,
   testProviderConfiguration,
 } from '@/lib/ai';
+import { showAlert } from '@/lib/alert';
 import { calculateTargets } from '@/lib/nutrition';
-import { clearApiKey } from '@/lib/secureStorage';
+import { clearApiKey, getApiKey } from '@/lib/secureStorage';
 import type { DailyTargets } from '@/types/domain';
+
+type ProviderFeedback = {
+  tone: 'info' | 'success' | 'error';
+  message: string;
+};
 
 export default function SettingsScreen() {
   const {
@@ -31,6 +37,7 @@ export default function SettingsScreen() {
   const [model, setModel] = useState(providerConfig?.model ?? DASHSCOPE_PRESET.model);
   const [apiKey, setApiKey] = useState('');
   const [testing, setTesting] = useState(false);
+  const [providerFeedback, setProviderFeedback] = useState<ProviderFeedback | null>(null);
   const [targetDraft, setTargetDraft] = useState<DailyTargets>(
     targets ?? { calories: 2000, protein: 130, carbs: 240, fat: 60 },
   );
@@ -52,42 +59,45 @@ export default function SettingsScreen() {
   const useDashScopePreset = () => {
     setBaseUrl(DASHSCOPE_PRESET.baseUrl);
     setModel(DASHSCOPE_PRESET.model);
+    setProviderFeedback(null);
   };
 
   const handleTestAndSave = async () => {
     if (!baseUrl.trim() || !model.trim()) {
-      Alert.alert('请填写 Base URL 和模型名');
-      return;
-    }
-    if (!apiKey.trim()) {
-      Alert.alert('请输入 API Key', hasApiKey ? '如需保留旧 Key，无需重新测试。' : undefined);
+      setProviderFeedback({ tone: 'error', message: '请填写 Base URL 和模型名。' });
       return;
     }
     setTesting(true);
+    setProviderFeedback({ tone: 'info', message: '正在验证图片输入与结构化输出…' });
     try {
+      const nextApiKey = apiKey.trim() || (hasApiKey ? await getApiKey() : null);
+      if (!nextApiKey) {
+        setProviderFeedback({ tone: 'error', message: '请输入 API Key。' });
+        return;
+      }
       const verified = await testProviderConfiguration(
         { baseUrl: baseUrl.trim(), model: model.trim() },
-        apiKey.trim(),
+        nextApiKey,
       );
-      await persistProvider(verified, apiKey.trim());
+      await persistProvider(verified, nextApiKey);
       setApiKey('');
-      Alert.alert(
-        '连接成功',
-        `图片输入可用，结构化返回模式：${responseModeLabel(verified.responseMode)}。`,
-      );
+      setProviderFeedback({
+        tone: 'success',
+        message: `连接成功。图片输入可用，结构化返回模式：${responseModeLabel(verified.responseMode)}。`,
+      });
     } catch (error) {
       const message =
         error instanceof AIProviderError || error instanceof Error
           ? error.message
           : String(error);
-      Alert.alert('测试失败', message);
+      setProviderFeedback({ tone: 'error', message: `测试失败：${message}` });
     } finally {
       setTesting(false);
     }
   };
 
   const handleClearKey = () => {
-    Alert.alert('清除 API Key？', '清除后拍照识别将暂停，手动记录不受影响。', [
+    showAlert('清除 API Key？', '清除后拍照识别将暂停，手动记录不受影响。', [
       { text: '取消', style: 'cancel' },
       {
         text: '清除',
@@ -95,6 +105,7 @@ export default function SettingsScreen() {
         onPress: async () => {
           await clearApiKey();
           setApiKey('');
+          setProviderFeedback(null);
           await refresh();
         },
       },
@@ -113,7 +124,7 @@ export default function SettingsScreen() {
     setSavingTargets(true);
     try {
       await persistTargets(targetDraft);
-      Alert.alert('目标已更新');
+      showAlert('目标已更新');
     } finally {
       setSavingTargets(false);
     }
@@ -165,7 +176,10 @@ export default function SettingsScreen() {
         <FormField
           label="Base URL"
           value={baseUrl}
-          onChangeText={setBaseUrl}
+          onChangeText={(value) => {
+            setBaseUrl(value);
+            setProviderFeedback(null);
+          }}
           autoCapitalize="none"
           autoCorrect={false}
           placeholder="https://example.com/v1"
@@ -174,7 +188,10 @@ export default function SettingsScreen() {
         <FormField
           label="模型名"
           value={model}
-          onChangeText={setModel}
+          onChangeText={(value) => {
+            setModel(value);
+            setProviderFeedback(null);
+          }}
           autoCapitalize="none"
           autoCorrect={false}
           placeholder="支持图片输入的模型 ID"
@@ -182,19 +199,64 @@ export default function SettingsScreen() {
         <FormField
           label={hasApiKey ? '替换 API Key' : 'API Key'}
           value={apiKey}
-          onChangeText={setApiKey}
+          onChangeText={(value) => {
+            setApiKey(value);
+            setProviderFeedback(null);
+          }}
           autoCapitalize="none"
           autoCorrect={false}
           secureTextEntry
           placeholder={hasApiKey ? '已安全保存；留空表示不替换' : 'sk-...'}
-          hint="密钥只写入 iOS Keychain / Android Keystore，不写入 SQLite 或日志。"
+          hint={
+            Platform.OS === 'web'
+              ? '浏览器中只保存在当前站点的 localStorage，不写入 SQLite 或日志。'
+              : '密钥只写入 iOS Keychain / Android Keystore，不写入 SQLite 或日志。'
+          }
         />
         <AppButton
-          label="测试连接并保存"
+          label={hasApiKey && !apiKey.trim() ? '重新测试并保存配置' : '测试连接并保存'}
           icon="flash-outline"
           onPress={handleTestAndSave}
           loading={testing}
         />
+        {providerFeedback ? (
+          <View
+            accessibilityRole="alert"
+            style={[
+              styles.feedback,
+              providerFeedback.tone === 'success' && styles.feedbackSuccess,
+              providerFeedback.tone === 'error' && styles.feedbackError,
+            ]}
+          >
+            <Ionicons
+              name={
+                providerFeedback.tone === 'success'
+                  ? 'checkmark-circle'
+                  : providerFeedback.tone === 'error'
+                    ? 'alert-circle'
+                    : 'time'
+              }
+              size={18}
+              color={
+                providerFeedback.tone === 'success'
+                  ? theme.colors.success
+                  : providerFeedback.tone === 'error'
+                    ? theme.colors.danger
+                    : theme.colors.primary
+              }
+            />
+            <Text
+              selectable
+              style={[
+                styles.feedbackText,
+                providerFeedback.tone === 'success' && styles.feedbackSuccessText,
+                providerFeedback.tone === 'error' && styles.feedbackErrorText,
+              ]}
+            >
+              {providerFeedback.message}
+            </Text>
+          </View>
+        ) : null}
         {providerConfig ? (
           <View style={styles.modeRow}>
             <Text style={styles.modeLabel}>STRUCTURED OUTPUT</Text>
@@ -498,6 +560,33 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontSize: 12,
     fontWeight: '900',
+  },
+  feedback: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 9,
+    padding: 12,
+    borderRadius: theme.radius.small,
+    backgroundColor: theme.colors.primarySoft,
+  },
+  feedbackSuccess: {
+    backgroundColor: theme.colors.successSoft,
+  },
+  feedbackError: {
+    backgroundColor: theme.colors.accentSoft,
+  },
+  feedbackText: {
+    flex: 1,
+    color: theme.colors.primaryDark,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+  feedbackSuccessText: {
+    color: theme.colors.success,
+  },
+  feedbackErrorText: {
+    color: theme.colors.danger,
   },
   reset: {
     color: theme.colors.primary,
