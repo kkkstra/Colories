@@ -13,33 +13,75 @@ interface Props<T extends string> {
   options: Option<T>[];
   value: T;
   onChange: (value: T) => void;
+  adaptive?: boolean;
+  minColumnWidth?: number;
 }
 
-export function ChoiceChips<T extends string>({ options, value, onChange }: Props<T>) {
+export function ChoiceChips<T extends string>({
+  options,
+  value,
+  onChange,
+  adaptive = false,
+  minColumnWidth = 74,
+}: Props<T>) {
   return (
     <View style={styles.row}>
       {options.map((option) => {
         const selected = option.value === value;
         return (
-          <Pressable
+          <ChoiceChip
             key={option.value}
-            accessibilityRole="button"
-            accessibilityState={{ selected }}
+            option={option}
+            selected={selected}
             onPress={() => onChange(option.value)}
-            style={[styles.chip, selected && styles.selected]}
-          >
-            {option.icon ? (
-              <Ionicons
-                name={option.icon}
-                size={17}
-                color={selected ? '#FFFFFF' : theme.colors.textMuted}
-              />
-            ) : null}
-            <Text style={[styles.label, selected && styles.selectedLabel]}>{option.label}</Text>
-          </Pressable>
+            adaptive={adaptive}
+            minColumnWidth={minColumnWidth}
+          />
         );
       })}
     </View>
+  );
+}
+
+function ChoiceChip<T extends string>({
+  option,
+  selected,
+  onPress,
+  adaptive = false,
+  minColumnWidth,
+}: {
+  option: Option<T>;
+  selected: boolean;
+  onPress: () => void;
+  adaptive?: boolean;
+  minColumnWidth?: number;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={[
+        styles.chip,
+        adaptive && styles.adaptiveChip,
+        adaptive && { flexBasis: minColumnWidth },
+        selected && styles.selected,
+      ]}
+    >
+      {option.icon ? (
+        <Ionicons
+          name={option.icon}
+          size={17}
+          color={selected ? '#FFFFFF' : theme.colors.textMuted}
+        />
+      ) : null}
+      <Text
+        numberOfLines={1}
+        style={[styles.label, adaptive && styles.adaptiveLabel, selected && styles.selectedLabel]}
+      >
+        {option.label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -62,6 +104,12 @@ const styles = StyleSheet.create({
     gap: 7,
     justifyContent: 'center',
   },
+  adaptiveChip: {
+    flexGrow: 0,
+    flexShrink: 0,
+    minWidth: 0,
+    paddingHorizontal: 8,
+  },
   selected: {
     backgroundColor: theme.colors.ink,
     borderColor: theme.colors.ink,
@@ -70,6 +118,10 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontSize: 13,
     fontWeight: '700',
+    flexShrink: 1,
+  },
+  adaptiveLabel: {
+    fontWeight: '800',
   },
   selectedLabel: {
     color: '#FFFFFF',

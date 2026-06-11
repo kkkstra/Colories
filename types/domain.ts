@@ -40,6 +40,7 @@ export interface FoodCatalogItem extends MacroValues {
   nameZh: string;
   nameEn?: string;
   category: FoodCategory;
+  cookingMethod?: string;
   aliases: string[];
   sourceReference: string;
   isCustom?: boolean;

@@ -5,6 +5,7 @@ import {
   MIGRATION_V1_SQL,
   MIGRATION_V2_SQL,
   MIGRATION_V3_SQL,
+  MIGRATION_V4_SQL,
   migrateDatabase,
   saveCustomFood,
   scoreFoodNameMatch,
@@ -27,6 +28,7 @@ describe('database migration', () => {
     expect(MIGRATION_V2_SQL).toContain('ADD COLUMN is_custom');
     expect(MIGRATION_V2_SQL).toContain('ADD COLUMN updated_at');
     expect(MIGRATION_V3_SQL).toContain('ADD COLUMN title');
+    expect(MIGRATION_V4_SQL).toContain('ADD COLUMN cooking_method');
   });
 
   it('seeds catalog and advances user_version on a fresh database', async () => {
@@ -47,6 +49,7 @@ describe('database migration', () => {
     expect(execAsync).toHaveBeenCalledWith(MIGRATION_V1_SQL);
     expect(execAsync).toHaveBeenCalledWith(MIGRATION_V2_SQL);
     expect(execAsync).toHaveBeenCalledWith(MIGRATION_V3_SQL);
+    expect(execAsync).toHaveBeenCalledWith(MIGRATION_V4_SQL);
     expect(execAsync).toHaveBeenLastCalledWith(`PRAGMA user_version = ${DATABASE_VERSION}`);
     expect(runAsync.mock.calls.some(([sql]) => String(sql).includes('food_catalog'))).toBe(true);
   });
@@ -63,6 +66,7 @@ describe('database migration', () => {
       nameZh: '食堂鸡腿饭',
       nameEn: 'Cafeteria chicken rice',
       category: 'dish',
+      cookingMethod: '烤',
       aliases: ['鸡腿饭', '公司午餐'],
       calories: 168,
       protein: 9,
@@ -73,6 +77,7 @@ describe('database migration', () => {
 
     expect(id).toMatch(/^custom-food-/);
     expect(runAsync.mock.calls[0][0]).toContain('is_custom');
+    expect(runAsync.mock.calls[0]).toContain('烤');
     expect(
       runAsync.mock.calls.some(
         ([sql, alias]) => String(sql).includes('food_alias') && alias === '鸡腿饭',

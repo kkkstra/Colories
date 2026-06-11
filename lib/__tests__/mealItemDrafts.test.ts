@@ -68,11 +68,14 @@ describe('meal item draft helpers', () => {
     const input = createCustomFoodInputFromMealItem(draft);
 
     expect(input.nameZh).toBe('牛肉盖浇饭');
+    expect(input.nameEn).toBeUndefined();
+    expect(input.cookingMethod).toBe('盖饭');
     expect(input.category).toBe('dish');
     expect(input.calories).toBe(208);
     expect(input.protein).toBe(8.8);
     expect(input.carbs).toBe(27.2);
     expect(input.fat).toBe(7.2);
     expect(input.sourceReference).toContain('AI 图像识别估算');
+    expect(input.sourceReference).not.toContain('烹饪方式');
   });
 });

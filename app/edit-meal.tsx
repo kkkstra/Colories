@@ -159,7 +159,12 @@ export default function EditMealScreen() {
           placeholder="例如：鸡腿饭配青菜"
           style={styles.titleInput}
         />
-        <ChoiceChips value={mealType} onChange={setMealType} options={MEAL_TYPE_OPTIONS} />
+        <ChoiceChips
+          value={mealType}
+          onChange={setMealType}
+          options={MEAL_TYPE_OPTIONS}
+          adaptive
+        />
         <FormField
           label="备注"
           value={notes}

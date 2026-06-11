@@ -227,6 +227,7 @@ export default function RecordScreen() {
       <ChoiceChips
         value={mealType}
         onChange={setMealType}
+        adaptive
         options={[
           { label: '早餐', value: 'breakfast', icon: 'sunny-outline' },
           { label: '午餐', value: 'lunch', icon: 'restaurant-outline' },

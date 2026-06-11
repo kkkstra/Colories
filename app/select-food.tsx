@@ -11,7 +11,7 @@ import { FormField } from '@/components/ui/FormField';
 import { Screen } from '@/components/ui/Screen';
 import { theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
-import { FOOD_CATEGORY_OPTIONS } from '@/data/foodCategories';
+import { FOOD_CATEGORY_LABELS, FOOD_CATEGORY_OPTIONS } from '@/data/foodCategories';
 import {
   countManagedFoods,
   getManagedFoods,
@@ -124,7 +124,12 @@ export default function SelectFoodScreen() {
           placeholder="鸡胸肉、米饭、酸奶…"
           autoFocus
         />
-        <ChoiceChips value={category} onChange={setCategory} options={categoryOptions} />
+        <ChoiceChips
+          value={category}
+          onChange={setCategory}
+          options={categoryOptions}
+          adaptive
+        />
       </Card>
 
       <View style={styles.listHeader}>
@@ -172,7 +177,9 @@ export default function SelectFoodScreen() {
                     </View>
                   ) : null}
                 </View>
-                <Text style={styles.foodMeta}>100g · {Math.round(food.calories)} kcal</Text>
+                <Text style={styles.foodMeta}>
+                  {formatFoodMeta(food)} · 100g · {Math.round(food.calories)} kcal
+                </Text>
               </View>
               <Ionicons name="add" size={24} color={theme.colors.primary} />
             </Pressable>
@@ -200,6 +207,10 @@ export default function SelectFoodScreen() {
       </View>
     </Screen>
   );
+}
+
+function formatFoodMeta(food: ManagedFood): string {
+  return [FOOD_CATEGORY_LABELS[food.category], food.cookingMethod].filter(Boolean).join(' · ');
 }
 
 const styles = StyleSheet.create({

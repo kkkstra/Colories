@@ -146,7 +146,12 @@ export default function FoodLibraryScreen() {
             { label: '我的', value: 'custom', icon: 'person-outline' },
           ]}
         />
-        <ChoiceChips value={category} onChange={setCategory} options={categoryOptions} />
+        <ChoiceChips
+          value={category}
+          onChange={setCategory}
+          options={categoryOptions}
+          adaptive
+        />
       </Card>
 
       <View style={styles.listHeader}>
@@ -206,7 +211,7 @@ function FoodRow({ food }: { food: ManagedFood }) {
           <View style={styles.foodNameBlock}>
             <Text style={styles.foodName}>{food.nameZh}</Text>
             <Text style={styles.foodMeta}>
-              {FOOD_CATEGORY_LABELS[food.category]} · 100g/ml · {Math.round(food.calories)} kcal
+              {formatFoodMeta(food)} · 100g/ml · {Math.round(food.calories)} kcal
             </Text>
           </View>
           <View style={[styles.badge, food.isCustom && styles.badgeCustom]}>
@@ -234,6 +239,10 @@ function FoodRow({ food }: { food: ManagedFood }) {
       </Card>
     </Pressable>
   );
+}
+
+function formatFoodMeta(food: ManagedFood): string {
+  return [FOOD_CATEGORY_LABELS[food.category], food.cookingMethod].filter(Boolean).join(' · ');
 }
 
 function StatTile({ label, value }: { label: string; value: number }) {

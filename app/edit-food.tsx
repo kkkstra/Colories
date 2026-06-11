@@ -42,6 +42,7 @@ function createEmptyDraft(name?: string): Draft {
     nameZh: name ?? '',
     nameEn: '',
     category: 'dish',
+    cookingMethod: '',
     aliasesText: '',
     calories: 0,
     protein: 0,
@@ -60,6 +61,7 @@ function draftFromFood(food: ManagedFood, copy = false): Draft {
     nameZh: copy ? `${food.nameZh}（我的）` : food.nameZh,
     nameEn: food.nameEn ?? '',
     category: food.category,
+    cookingMethod: food.cookingMethod ?? '',
     aliasesText,
     calories: food.calories,
     protein: food.protein,
@@ -119,6 +121,7 @@ export default function EditFoodScreen() {
         nameZh: draft.nameZh.trim(),
         nameEn: draft.nameEn?.trim() || undefined,
         category: draft.category,
+        cookingMethod: draft.cookingMethod?.trim() || undefined,
         calories: draft.calories,
         protein: draft.protein,
         carbs: draft.carbs,
@@ -193,8 +196,15 @@ export default function EditFoodScreen() {
               ...item,
               icon: CATEGORY_ICONS[item.value],
             }))}
+            adaptive
           />
         </View>
+        <FormField
+          label="烹饪方式（可选）"
+          value={draft.cookingMethod}
+          onChangeText={(value) => updateDraft('cookingMethod', value)}
+          placeholder="例如：蒸、煮、少油炒、空气炸"
+        />
         <FormField
           label="别名"
           value={draft.aliasesText}

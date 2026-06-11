@@ -102,10 +102,12 @@ export function applyRecognitionChoice(
 
 export function createCustomFoodInputFromMealItem(item: MealItemDraft): FoodCatalogInput {
   const per100g = toPer100g(item);
+  const cookingMethod = item.cookingMethod?.trim();
   return {
     nameZh: item.name.trim(),
-    nameEn: item.cookingMethod?.trim() || undefined,
+    nameEn: undefined,
     category: 'dish',
+    cookingMethod: cookingMethod || undefined,
     aliases: item.recognitionAlternatives ? [item.recognitionAlternatives.ai.name] : undefined,
     ...per100g,
     sourceReference: 'AI 图像识别估算；用户快速加入，请按包装营养标签、品牌官网或可信食物成分表校准',

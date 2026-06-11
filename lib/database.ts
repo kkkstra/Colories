@@ -18,7 +18,7 @@ import type {
   UserProfile,
 } from '@/types/domain';
 
-export const DATABASE_VERSION = 3;
+export const DATABASE_VERSION = 4;
 
 export const MIGRATION_V1_SQL = `
 PRAGMA journal_mode = WAL;
@@ -114,6 +114,10 @@ export const MIGRATION_V3_SQL = `
 ALTER TABLE meals ADD COLUMN title TEXT;
 `;
 
+export const MIGRATION_V4_SQL = `
+ALTER TABLE food_catalog ADD COLUMN cooking_method TEXT;
+`;
+
 export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
   const versionRow = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   const currentVersion = versionRow?.user_version ?? 0;
@@ -125,6 +129,9 @@ export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
   }
   if (currentVersion < 3) {
     await db.execAsync(MIGRATION_V3_SQL);
+  }
+  if (currentVersion < 4) {
+    await db.execAsync(MIGRATION_V4_SQL);
   }
   await seedFoodCatalog(db);
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
@@ -143,12 +150,13 @@ async function seedFoodCatalog(db: SQLiteDatabase): Promise<void> {
     for (const food of FOOD_CATALOG) {
       await db.runAsync(
         `INSERT OR REPLACE INTO food_catalog
-          (id, name_zh, name_en, category, calories, protein, carbs, fat, source_reference, is_custom, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+          (id, name_zh, name_en, category, cooking_method, calories, protein, carbs, fat, source_reference, is_custom, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
         food.id,
         food.nameZh,
         food.nameEn ?? null,
         food.category,
+        food.cookingMethod ?? null,
         food.calories,
         food.protein,
         food.carbs,
@@ -257,6 +265,7 @@ export interface CatalogSearchRow {
   nameZh: string;
   nameEn?: string;
   category: FoodCategory;
+  cookingMethod?: string;
   calories: number;
   protein: number;
   carbs: number;
@@ -289,6 +298,7 @@ export type FoodCatalogInput = MacroValues & {
   nameZh: string;
   nameEn?: string;
   category: FoodCategory;
+  cookingMethod?: string;
   aliases?: string[];
   sourceReference?: string;
 };
@@ -298,6 +308,7 @@ type FoodCatalogDbRow = {
   name_zh: string;
   name_en: string | null;
   category: FoodCategory;
+  cooking_method: string | null;
   calories: number;
   protein: number;
   carbs: number;
@@ -317,12 +328,12 @@ export async function searchFoods(
       ? `SELECT DISTINCT f.*
          FROM food_catalog f
          LEFT JOIN food_alias a ON a.food_id = f.id
-         WHERE a.normalized_alias LIKE ? OR f.name_zh LIKE ? OR f.name_en LIKE ?
+         WHERE a.normalized_alias LIKE ? OR f.name_zh LIKE ? OR f.name_en LIKE ? OR f.cooking_method LIKE ?
          ORDER BY CASE WHEN a.normalized_alias = ? THEN 0 ELSE 1 END, f.is_custom DESC, f.name_zh
          LIMIT ?`
       : `SELECT * FROM food_catalog ORDER BY is_custom DESC, category, name_zh LIMIT ?`,
     ...(normalized
-      ? [`%${normalized}%`, `%${query}%`, `%${query}%`, normalized, limit]
+      ? [`%${normalized}%`, `%${query}%`, `%${query}%`, `%${query}%`, normalized, limit]
       : [limit]),
   );
   return rows.map(mapCatalogRow);
@@ -538,12 +549,13 @@ export async function saveCustomFood(
 
     await db.runAsync(
       `INSERT INTO food_catalog
-        (id, name_zh, name_en, category, calories, protein, carbs, fat, source_reference, is_custom, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+        (id, name_zh, name_en, category, cooking_method, calories, protein, carbs, fat, source_reference, is_custom, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
        ON CONFLICT(id) DO UPDATE SET
         name_zh = excluded.name_zh,
         name_en = excluded.name_en,
         category = excluded.category,
+        cooking_method = excluded.cooking_method,
         calories = excluded.calories,
         protein = excluded.protein,
         carbs = excluded.carbs,
@@ -554,6 +566,7 @@ export async function saveCustomFood(
       input.nameZh.trim(),
       input.nameEn?.trim() || null,
       input.category,
+      input.cookingMethod?.trim() || null,
       input.calories,
       input.protein,
       input.carbs,
@@ -589,6 +602,7 @@ function mapCatalogRow(row: FoodCatalogDbRow): CatalogSearchRow {
     nameZh: row.name_zh,
     nameEn: row.name_en ?? undefined,
     category: row.category,
+    cookingMethod: row.cooking_method ?? undefined,
     calories: row.calories,
     protein: row.protein,
     carbs: row.carbs,
@@ -637,12 +651,12 @@ function buildFoodCatalogFilter({
   }
   if (normalized) {
     clauses.push(
-      `(f.name_zh LIKE ? OR f.name_en LIKE ? OR EXISTS (
+      `(f.name_zh LIKE ? OR f.name_en LIKE ? OR f.cooking_method LIKE ? OR EXISTS (
         SELECT 1 FROM food_alias ax
         WHERE ax.food_id = f.id AND ax.normalized_alias LIKE ?
       ))`,
     );
-    params.push(`%${query}%`, `%${query}%`, `%${normalized}%`);
+    params.push(`%${query}%`, `%${query}%`, `%${query}%`, `%${normalized}%`);
   }
 
   return {
