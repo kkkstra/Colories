@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockFileSystem = vi.hoisted(() => ({
   files: new Map<string, { text?: string; base64?: string; bytes?: Uint8Array }>(),
+  directories: new Map<string, { created?: boolean; deleted?: boolean }>(),
 }));
 
 const mockPlatform = vi.hoisted(() => ({
@@ -35,9 +36,15 @@ vi.mock('expo-file-system', () => {
       return true;
     }
 
-    create() {}
+    create() {
+      const current = mockFileSystem.directories.get(this.uri) ?? {};
+      mockFileSystem.directories.set(this.uri, { ...current, created: true });
+    }
 
-    delete() {}
+    delete() {
+      const current = mockFileSystem.directories.get(this.uri) ?? {};
+      mockFileSystem.directories.set(this.uri, { ...current, deleted: true });
+    }
   }
 
   class File {
@@ -94,6 +101,7 @@ import {
   createCaloriesBackup,
   importCaloriesBackup,
   parseCaloriesBackup,
+  resetAllAppData,
   type CaloriesBackupV1,
 } from '@/lib/dataTransfer';
 import { DATABASE_VERSION } from '@/lib/database';
@@ -101,6 +109,7 @@ import { DATABASE_VERSION } from '@/lib/database';
 describe('data transfer', () => {
   beforeEach(() => {
     mockFileSystem.files.clear();
+    mockFileSystem.directories.clear();
     mockPlatform.OS = 'ios';
     mockSecurity.counter = 0;
   });
@@ -224,6 +233,32 @@ describe('data transfer', () => {
         }),
       ),
     ).toThrow('更新版本');
+  });
+
+  it('clears app data and resets the photo directory', async () => {
+    const db = createMockDb();
+
+    await resetAllAppData(db as never);
+
+    for (const table of [
+      'meal_photos',
+      'meal_items',
+      'meals',
+      'ai_insight_advice',
+      'ai_provider_config',
+      'daily_targets',
+      'user_profile',
+    ]) {
+      expect(
+        db.runAsync.mock.calls.some(([sql]) => String(sql).includes(`DELETE FROM ${table}`)),
+      ).toBe(true);
+    }
+    expect(
+      db.runAsync.mock.calls.some(([sql]) =>
+        String(sql).includes('DELETE FROM food_catalog WHERE is_custom = 1'),
+      ),
+    ).toBe(true);
+    expect(mockFileSystem.directories.get('file://document/meal-photos')?.deleted).toBe(true);
   });
 });
 

@@ -22,6 +22,7 @@ import { showAlert } from '@/lib/alert';
 import {
   createDataExportFile,
   importDataFile,
+  resetAllAppData,
   type DataExportResult,
   type DataImportResult,
   type ImportMode,
@@ -37,7 +38,7 @@ type ProviderFeedback = {
 };
 
 type ExpandedSection = 'profile' | 'provider' | 'targets' | null;
-type TransferBusy = 'export' | 'import' | null;
+type TransferBusy = 'export' | 'import' | 'clear' | null;
 
 const DEFAULT_PROFILE: UserProfile = {
   age: 28,
@@ -83,6 +84,7 @@ export default function SettingsScreen() {
     persistProvider,
     persistProfile,
     persistTargets,
+    clearQueuedMealItem,
   } = useApp();
   const [baseUrl, setBaseUrl] = useState(providerConfig?.baseUrl ?? DASHSCOPE_PRESET.baseUrl);
   const [model, setModel] = useState(providerConfig?.model ?? DASHSCOPE_PRESET.model);
@@ -347,6 +349,41 @@ export default function SettingsScreen() {
       showAlert('导入完成', formatImportResult(imported));
     } catch (error) {
       showAlert('导入失败', getErrorMessage(error));
+    } finally {
+      setTransferBusy(null);
+    }
+  };
+
+  const handleClearAllData = () => {
+    showAlert(
+      '清空所有数据？',
+      '会删除饮食记录、身体信息、每日目标、自定义食物、AI 配置、API Key 和餐次照片。清空后会回到起始页。',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '清空',
+          style: 'destructive',
+          onPress: () => {
+            void clearAllData();
+          },
+        },
+      ],
+    );
+  };
+
+  const clearAllData = async () => {
+    setTransferBusy('clear');
+    try {
+      await resetAllAppData(db);
+      await clearApiKey();
+      clearQueuedMealItem();
+      setApiKey('');
+      setProviderFeedback(null);
+      await refresh();
+      await syncTodayNutritionWidget(db);
+      router.replace('/onboarding');
+    } catch (error) {
+      showAlert('清空失败', getErrorMessage(error));
     } finally {
       setTransferBusy(null);
     }
@@ -692,6 +729,14 @@ export default function SettingsScreen() {
               />
             </View>
           </View>
+          <AppButton
+            label="清空所有数据"
+            icon="trash-outline"
+            variant="danger"
+            onPress={handleClearAllData}
+            loading={transferBusy === 'clear'}
+            disabled={transferBusy !== null}
+          />
         </View>
         <View style={styles.disclaimer}>
           <Ionicons name="information-circle-outline" size={17} color={theme.colors.warning} />

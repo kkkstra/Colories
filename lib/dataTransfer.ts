@@ -296,6 +296,13 @@ export async function importCaloriesBackup(
   };
 }
 
+export async function resetAllAppData(db: TransferDatabase): Promise<void> {
+  await runImportTransaction(db, async (txn) => {
+    await clearUserData(txn);
+  });
+  clearStoredPhotos();
+}
+
 export function parseCaloriesBackup(text: string): CaloriesBackupV1 {
   let parsed: unknown;
   try {
@@ -438,6 +445,17 @@ function resetPhotoDirectory(): void {
     directory.delete();
   }
   directory.create({ idempotent: true, intermediates: true });
+}
+
+function clearStoredPhotos(): void {
+  if (Platform.OS === 'web') {
+    return;
+  }
+  try {
+    resetPhotoDirectory();
+  } catch {
+    // Photo cleanup should not block resetting app data.
+  }
 }
 
 function ensurePhotoDirectory(): void {
