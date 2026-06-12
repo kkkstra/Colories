@@ -119,6 +119,21 @@ type AIInsightAdviceRow = {
   updated_at: string;
 };
 
+type ReminderSettingsRow = {
+  id: number;
+  enabled: number;
+  breakfast_enabled: number;
+  breakfast_hour: number;
+  breakfast_minute: number;
+  lunch_enabled: number;
+  lunch_hour: number;
+  lunch_minute: number;
+  dinner_enabled: number;
+  dinner_hour: number;
+  dinner_minute: number;
+  updated_at: string;
+};
+
 export type BackupPhoto = {
   reference: string;
   mediaType: 'image/jpeg';
@@ -140,6 +155,7 @@ export type CaloriesBackupV1 = {
     mealPhotos: MealPhotoRow[];
     aiProviderConfig: AIProviderConfigRow[];
     aiInsightAdvice: AIInsightAdviceRow[];
+    reminderSettings: ReminderSettingsRow[];
     photos: BackupPhoto[];
   };
 };
@@ -200,6 +216,7 @@ export async function createCaloriesBackup(
     mealPhotos,
     aiProviderConfig,
     aiInsightAdvice,
+    reminderSettings,
   ] = await Promise.all([
     db.getAllAsync<UserProfileRow>('SELECT * FROM user_profile ORDER BY id'),
     db.getAllAsync<DailyTargetRow>('SELECT * FROM daily_targets ORDER BY date_key'),
@@ -218,6 +235,7 @@ export async function createCaloriesBackup(
     db.getAllAsync<MealPhotoRow>('SELECT * FROM meal_photos ORDER BY meal_id, sort_order, id'),
     db.getAllAsync<AIProviderConfigRow>('SELECT * FROM ai_provider_config ORDER BY id'),
     db.getAllAsync<AIInsightAdviceRow>('SELECT * FROM ai_insight_advice ORDER BY id'),
+    db.getAllAsync<ReminderSettingsRow>('SELECT * FROM reminder_settings ORDER BY id'),
   ]);
 
   const { photos, skippedPhotos } = await readBackupPhotos(meals, mealPhotos);
@@ -238,6 +256,7 @@ export async function createCaloriesBackup(
         mealPhotos,
         aiProviderConfig,
         aiInsightAdvice,
+        reminderSettings,
         photos,
       },
     },
@@ -341,6 +360,9 @@ export function parseCaloriesBackup(text: string): CaloriesBackupV1 {
     if (!Array.isArray(parsed.data[key])) {
       throw new Error('备份文件数据结构不完整。');
     }
+  }
+  if (!Array.isArray(parsed.data.reminderSettings)) {
+    parsed.data.reminderSettings = [];
   }
 
   return parsed as CaloriesBackupV1;
@@ -482,6 +504,7 @@ async function clearUserData(db: QueryableDatabase): Promise<void> {
   await db.runAsync('DELETE FROM meals');
   await db.runAsync('DELETE FROM ai_insight_advice');
   await db.runAsync('DELETE FROM ai_provider_config');
+  await db.runAsync('DELETE FROM reminder_settings');
   await db.runAsync('DELETE FROM daily_targets');
   await db.runAsync('DELETE FROM user_profile');
   await db.runAsync(
@@ -545,6 +568,31 @@ async function importScalarRows(
         'summary',
         'actions_json',
         'warnings_json',
+        'updated_at',
+      ]),
+    );
+  }
+  for (const row of backup.data.reminderSettings) {
+    await db.runAsync(
+      `INSERT INTO reminder_settings
+        (id, enabled,
+         breakfast_enabled, breakfast_hour, breakfast_minute,
+         lunch_enabled, lunch_hour, lunch_minute,
+         dinner_enabled, dinner_hour, dinner_minute,
+         updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      rowParams(row, [
+        'id',
+        'enabled',
+        'breakfast_enabled',
+        'breakfast_hour',
+        'breakfast_minute',
+        'lunch_enabled',
+        'lunch_hour',
+        'lunch_minute',
+        'dinner_enabled',
+        'dinner_hour',
+        'dinner_minute',
         'updated_at',
       ]),
     );

@@ -8,11 +8,14 @@ import {
   MIGRATION_V4_SQL,
   MIGRATION_V5_SQL,
   MIGRATION_V6_SQL,
+  MIGRATION_V7_SQL,
+  getReminderSettings,
   getCachedMealSuggestionAdvice,
   getCachedInsightAdvice,
   migrateDatabase,
   saveCachedMealSuggestionAdvice,
   saveCachedInsightAdvice,
+  saveReminderSettings,
   saveMeal,
   saveCustomFood,
   scoreFoodNameMatch,
@@ -31,8 +34,9 @@ describe('database migration', () => {
       'meal_photos',
       'ai_provider_config',
       'ai_insight_advice',
+      'reminder_settings',
     ]) {
-      expect(`${MIGRATION_V1_SQL}\n${MIGRATION_V5_SQL}\n${MIGRATION_V6_SQL}`).toContain(
+      expect(`${MIGRATION_V1_SQL}\n${MIGRATION_V5_SQL}\n${MIGRATION_V6_SQL}\n${MIGRATION_V7_SQL}`).toContain(
         `CREATE TABLE IF NOT EXISTS ${table}`,
       );
     }
@@ -42,6 +46,7 @@ describe('database migration', () => {
     expect(MIGRATION_V4_SQL).toContain('ADD COLUMN cooking_method');
     expect(MIGRATION_V5_SQL).toContain('INSERT INTO meal_photos');
     expect(MIGRATION_V6_SQL).toContain('data_hash');
+    expect(MIGRATION_V7_SQL).toContain('breakfast_hour');
   });
 
   it('seeds catalog and advances user_version on a fresh database', async () => {
@@ -65,8 +70,51 @@ describe('database migration', () => {
     expect(execAsync).toHaveBeenCalledWith(MIGRATION_V4_SQL);
     expect(execAsync).toHaveBeenCalledWith(MIGRATION_V5_SQL);
     expect(execAsync).toHaveBeenCalledWith(MIGRATION_V6_SQL);
+    expect(execAsync).toHaveBeenCalledWith(MIGRATION_V7_SQL);
     expect(execAsync).toHaveBeenLastCalledWith(`PRAGMA user_version = ${DATABASE_VERSION}`);
     expect(runAsync.mock.calls.some(([sql]) => String(sql).includes('food_catalog'))).toBe(true);
+  });
+
+  it('returns default disabled reminder settings when none are saved', async () => {
+    const db = {
+      getFirstAsync: vi.fn().mockResolvedValue(null),
+    };
+
+    const settings = await getReminderSettings(db as never);
+
+    expect(settings.enabled).toBe(false);
+    expect(settings.meals.breakfast).toMatchObject({ enabled: true, hour: 8, minute: 0 });
+    expect(settings.meals.lunch).toMatchObject({ enabled: true, hour: 12, minute: 30 });
+    expect(settings.meals.dinner).toMatchObject({ enabled: true, hour: 18, minute: 30 });
+  });
+
+  it('saves reminder settings and validates reminder times', async () => {
+    const runAsync = vi.fn().mockResolvedValue({ lastInsertRowId: 1, changes: 1 });
+    const db = { runAsync };
+
+    await saveReminderSettings(db as never, {
+      enabled: true,
+      meals: {
+        breakfast: { enabled: true, hour: 7, minute: 45 },
+        lunch: { enabled: false, hour: 12, minute: 30 },
+        dinner: { enabled: true, hour: 19, minute: 0 },
+      },
+    });
+
+    expect(runAsync.mock.calls[0][0]).toContain('reminder_settings');
+    expect(runAsync.mock.calls[0]).toContain(7);
+    expect(runAsync.mock.calls[0]).toContain(45);
+
+    await expect(
+      saveReminderSettings(db as never, {
+        enabled: true,
+        meals: {
+          breakfast: { enabled: true, hour: 24, minute: 0 },
+          lunch: { enabled: true, hour: 12, minute: 30 },
+          dinner: { enabled: true, hour: 18, minute: 30 },
+        },
+      }),
+    ).rejects.toThrow('提醒时间无效');
   });
 
   it('caches weekly insight advice by data hash', async () => {

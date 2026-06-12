@@ -11,16 +11,31 @@ import {
 
 import {
   getProviderConfig,
+  getReminderSettings,
   getTargets,
   getUserProfile,
   saveDefaultTargets,
   saveProviderConfig,
+  saveReminderSettings,
   saveUserProfile,
 } from '@/lib/database';
 import { calculateTargets } from '@/lib/nutrition';
+import {
+  getReminderPermissionStatusAsync,
+  requestReminderPermissionsAsync,
+  syncMealReminderNotifications,
+  type ReminderPermissionStatus,
+} from '@/lib/reminders';
+import { DEFAULT_REMINDER_SETTINGS } from '@/lib/reminderSettings';
 import { getApiKey, saveApiKey } from '@/lib/secureStorage';
 import { syncTodayNutritionWidget } from '@/lib/widgetSync';
-import type { AIProviderConfig, DailyTargets, MealItemDraft, UserProfile } from '@/types/domain';
+import type {
+  AIProviderConfig,
+  DailyTargets,
+  MealItemDraft,
+  ReminderSettings,
+  UserProfile,
+} from '@/types/domain';
 
 export const RECORD_MEAL_ITEM_TARGET = 'record';
 
@@ -38,12 +53,18 @@ interface AppContextValue {
   profile: UserProfile | null;
   targets: DailyTargets | null;
   providerConfig: AIProviderConfig | null;
+  reminderSettings: ReminderSettings;
+  reminderPermissionStatus: ReminderPermissionStatus;
   hasApiKey: boolean;
   queuedMealItem: QueuedMealItem | null;
   refresh: () => Promise<void>;
   persistProfile: (profile: UserProfile, targets?: DailyTargets) => Promise<void>;
   persistTargets: (targets: DailyTargets) => Promise<void>;
   persistProvider: (config: AIProviderConfig, apiKey: string) => Promise<void>;
+  persistReminderSettings: (
+    settings: ReminderSettings,
+    options?: { requestPermission?: boolean },
+  ) => Promise<ReminderPermissionStatus>;
   queueMealItem: (item: MealItemDraft, target?: string) => void;
   clearQueuedMealItem: () => void;
 }
@@ -56,22 +77,31 @@ export function AppProvider({ children }: PropsWithChildren) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [targets, setTargets] = useState<DailyTargets | null>(null);
   const [providerConfig, setProviderConfig] = useState<AIProviderConfig | null>(null);
+  const [reminderSettings, setReminderSettings] =
+    useState<ReminderSettings>(DEFAULT_REMINDER_SETTINGS);
+  const [reminderPermissionStatus, setReminderPermissionStatus] =
+    useState<ReminderPermissionStatus>('undetermined');
   const [hasApiKey, setHasApiKey] = useState(false);
   const [queuedMealItem, setQueuedMealItem] = useState<QueuedMealItem | null>(null);
 
   const refresh = useCallback(async () => {
-    const [nextProfile, nextTargets, nextProvider, apiKey] = await Promise.all([
+    const [nextProfile, nextTargets, nextProvider, nextReminderSettings, nextPermissionStatus, apiKey] = await Promise.all([
       getUserProfile(db),
       getTargets(db),
       getProviderConfig(db),
+      getReminderSettings(db),
+      getReminderPermissionStatusAsync(),
       getApiKey(),
     ]);
     setProfile(nextProfile);
     setTargets(nextTargets);
     setProviderConfig(nextProvider);
+    setReminderSettings(nextReminderSettings);
+    setReminderPermissionStatus(nextPermissionStatus);
     setHasApiKey(Boolean(apiKey));
     setLoading(false);
     syncTodayNutritionWidget(db).catch(() => {});
+    syncMealReminderNotifications(nextReminderSettings).catch(() => {});
   }, [db]);
 
   useEffect(() => {
@@ -110,6 +140,24 @@ export function AppProvider({ children }: PropsWithChildren) {
     [db],
   );
 
+  const persistReminderSettings = useCallback(
+    async (
+      nextSettings: ReminderSettings,
+      options: { requestPermission?: boolean } = {},
+    ): Promise<ReminderPermissionStatus> => {
+      let nextPermissionStatus = await getReminderPermissionStatusAsync();
+      if (nextSettings.enabled && options.requestPermission) {
+        nextPermissionStatus = await requestReminderPermissionsAsync();
+      }
+      await saveReminderSettings(db, nextSettings);
+      setReminderSettings(nextSettings);
+      setReminderPermissionStatus(nextPermissionStatus);
+      await syncMealReminderNotifications(nextSettings);
+      return nextPermissionStatus;
+    },
+    [db],
+  );
+
   const queueMealItem = useCallback((item: MealItemDraft, target = RECORD_MEAL_ITEM_TARGET) => {
     setQueuedMealItem({ item, target });
   }, []);
@@ -124,12 +172,15 @@ export function AppProvider({ children }: PropsWithChildren) {
       profile,
       targets,
       providerConfig,
+      reminderSettings,
+      reminderPermissionStatus,
       hasApiKey,
       queuedMealItem,
       refresh,
       persistProfile,
       persistTargets,
       persistProvider,
+      persistReminderSettings,
       queueMealItem,
       clearQueuedMealItem,
     }),
@@ -139,11 +190,14 @@ export function AppProvider({ children }: PropsWithChildren) {
       loading,
       persistProfile,
       persistProvider,
+      persistReminderSettings,
       persistTargets,
       profile,
       providerConfig,
       queueMealItem,
       queuedMealItem,
+      reminderPermissionStatus,
+      reminderSettings,
       refresh,
       targets,
     ],

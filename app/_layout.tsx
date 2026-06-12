@@ -9,6 +9,10 @@ import { AppHeader } from '@/components/ui/AppHeader';
 import { AppProvider } from '@/context/AppContext';
 import { theme } from '@/constants/Theme';
 import { migrateDatabase } from '@/lib/database';
+import {
+  configureMealReminderNotificationHandler,
+  useMealReminderNotificationObserver,
+} from '@/lib/reminders';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -23,7 +27,11 @@ SplashScreen.setOptions({
   fade: true,
 });
 
+configureMealReminderNotificationHandler();
+
 export default function RootLayout() {
+  useMealReminderNotificationObserver();
+
   const navigationTheme = {
     ...DefaultTheme,
     colors: {

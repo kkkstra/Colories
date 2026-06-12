@@ -4,12 +4,13 @@ import { router } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { Card } from '@/components/ui/Card';
 import { ChoiceChips } from '@/components/ui/ChoiceChips';
 import { FormField } from '@/components/ui/FormField';
+import { ReminderTimePicker } from '@/components/ui/ReminderTimePicker';
 import { Screen } from '@/components/ui/Screen';
 import { theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
@@ -28,16 +29,24 @@ import {
   type ImportMode,
 } from '@/lib/dataTransfer';
 import { calculateTargets } from '@/lib/nutrition';
+import {
+  activeReminderCount,
+  cloneReminderSettings,
+  formatReminderTime,
+  REMINDER_MEAL_LABELS,
+  REMINDER_MEAL_TYPES,
+} from '@/lib/reminderSettings';
+import type { ReminderPermissionStatus } from '@/lib/reminders';
 import { clearApiKey, getApiKey } from '@/lib/secureStorage';
 import { syncTodayNutritionWidget } from '@/lib/widgetSync';
-import type { DailyTargets, UserProfile } from '@/types/domain';
+import type { DailyTargets, MainMealType, ReminderSettings, UserProfile } from '@/types/domain';
 
 type ProviderFeedback = {
   tone: 'info' | 'success' | 'error';
   message: string;
 };
 
-type ExpandedSection = 'profile' | 'provider' | 'targets' | null;
+type ExpandedSection = 'profile' | 'provider' | 'targets' | 'reminders' | null;
 type TransferBusy = 'export' | 'import' | 'clear' | null;
 
 const DEFAULT_PROFILE: UserProfile = {
@@ -79,11 +88,14 @@ export default function SettingsScreen() {
     profile,
     targets,
     providerConfig,
+    reminderSettings,
+    reminderPermissionStatus,
     hasApiKey,
     refresh,
     persistProvider,
     persistProfile,
     persistTargets,
+    persistReminderSettings,
     clearQueuedMealItem,
   } = useApp();
   const [baseUrl, setBaseUrl] = useState(providerConfig?.baseUrl ?? DASHSCOPE_PRESET.baseUrl);
@@ -95,8 +107,12 @@ export default function SettingsScreen() {
     targets ?? { calories: 2000, protein: 130, carbs: 240, fat: 60 },
   );
   const [profileDraft, setProfileDraft] = useState<UserProfile>(profile ?? DEFAULT_PROFILE);
+  const [reminderDraft, setReminderDraft] = useState<ReminderSettings>(() =>
+    cloneReminderSettings(reminderSettings),
+  );
   const [savingTargets, setSavingTargets] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [savingReminders, setSavingReminders] = useState(false);
   const [transferBusy, setTransferBusy] = useState<TransferBusy>(null);
   const [importMode, setImportMode] = useState<ImportMode>('replace');
   const [expandedSection, setExpandedSection] = useState<ExpandedSection>(
@@ -121,6 +137,10 @@ export default function SettingsScreen() {
       setProfileDraft(profile);
     }
   }, [profile]);
+
+  useEffect(() => {
+    setReminderDraft(cloneReminderSettings(reminderSettings));
+  }, [reminderSettings]);
 
   const useDashScopePreset = () => {
     setBaseUrl(DASHSCOPE_PRESET.baseUrl);
@@ -265,6 +285,45 @@ export default function SettingsScreen() {
     }
   };
 
+  const updateReminderEnabled = (enabled: boolean) => {
+    setReminderDraft((current) => ({ ...current, enabled }));
+  };
+
+  const updateMealReminder = (
+    mealType: MainMealType,
+    nextSetting: Partial<ReminderSettings['meals'][MainMealType]>,
+  ) => {
+    setReminderDraft((current) => ({
+      ...current,
+      meals: {
+        ...current.meals,
+        [mealType]: {
+          ...current.meals[mealType],
+          ...nextSetting,
+        },
+      },
+    }));
+  };
+
+  const handleSaveReminders = async () => {
+    setSavingReminders(true);
+    try {
+      const permissionStatus = await persistReminderSettings(reminderDraft, {
+        requestPermission: reminderDraft.enabled && reminderPermissionStatus !== 'granted',
+      });
+      if (reminderDraft.enabled && permissionStatus !== 'granted') {
+        showAlert('提醒设置已保存', '系统通知权限未开启，允许通知后才会收到三餐提醒。');
+      } else {
+        showAlert(reminderDraft.enabled ? '提醒已更新' : '提醒已关闭');
+      }
+      setExpandedSection(null);
+    } catch (error) {
+      showAlert('保存提醒失败', getErrorMessage(error));
+    } finally {
+      setSavingReminders(false);
+    }
+  };
+
   const resetTargets = () => {
     if (profile) {
       setTargetDraft(calculateTargets(profile));
@@ -390,6 +449,9 @@ export default function SettingsScreen() {
   };
 
   const recommendedTargets = calculateTargets(profileDraft);
+  const reminderCount = activeReminderCount(reminderDraft);
+  const reminderSummary = formatReminderSectionValue(reminderDraft, reminderPermissionStatus);
+  const reminderSummaryActive = reminderCount > 0 && reminderPermissionStatus === 'granted';
 
   return (
     <Screen>
@@ -547,6 +609,99 @@ export default function SettingsScreen() {
                 />
               </View>
             </View>
+          </View>
+        ) : null}
+      </Card>
+
+      <Card style={styles.sectionCard}>
+        <SectionSummary
+          icon="notifications"
+          title="三餐提醒"
+          value={reminderSummary}
+          active={reminderSummaryActive}
+          expanded={expandedSection === 'reminders'}
+          onPress={() => toggleSection('reminders')}
+        />
+
+        <View style={styles.reminderSummaryGrid}>
+          {REMINDER_MEAL_TYPES.map((mealType) => {
+            const mealSetting = reminderDraft.meals[mealType];
+            const enabled = reminderDraft.enabled && mealSetting.enabled;
+            return (
+              <View key={mealType} style={styles.reminderMetric}>
+                <View style={[styles.reminderDot, enabled && styles.reminderDotActive]} />
+                <Text style={styles.reminderMetricLabel}>{REMINDER_MEAL_LABELS[mealType]}</Text>
+                <Text
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.82}
+                  numberOfLines={1}
+                  style={styles.reminderMetricValue}
+                >
+                  {formatReminderTime(mealSetting)}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+
+        {expandedSection === 'reminders' ? (
+          <View style={styles.sectionBody}>
+            <View style={styles.reminderMasterRow}>
+              <View style={styles.reminderMasterCopy}>
+                <Text style={styles.reminderMasterTitle}>开启三餐提醒</Text>
+                <Text style={styles.reminderMasterMeta}>
+                  首次开启时会请求系统通知权限。
+                </Text>
+              </View>
+              <Switch
+                value={reminderDraft.enabled}
+                onValueChange={updateReminderEnabled}
+                trackColor={{ true: theme.colors.primarySoft }}
+                thumbColor={reminderDraft.enabled ? theme.colors.primary : '#FFFFFF'}
+              />
+            </View>
+
+            <ReminderPermissionNotice status={reminderPermissionStatus} enabled={reminderDraft.enabled} />
+
+            <View style={styles.reminderMealList}>
+              {REMINDER_MEAL_TYPES.map((mealType) => {
+                const mealSetting = reminderDraft.meals[mealType];
+                const disabled = !reminderDraft.enabled;
+                return (
+                  <View
+                    key={mealType}
+                    style={[styles.reminderMealRow, disabled && styles.disabledRow]}
+                  >
+                    <View style={styles.reminderMealHeader}>
+                      <Text style={styles.reminderMealTitle}>
+                        {REMINDER_MEAL_LABELS[mealType]}
+                      </Text>
+                      <Switch
+                        value={mealSetting.enabled}
+                        disabled={disabled}
+                        onValueChange={(enabled) => updateMealReminder(mealType, { enabled })}
+                        trackColor={{ true: theme.colors.primarySoft }}
+                        thumbColor={mealSetting.enabled ? theme.colors.primary : '#FFFFFF'}
+                      />
+                    </View>
+                    <ReminderTimePicker
+                      label="提醒时间"
+                      hour={mealSetting.hour}
+                      minute={mealSetting.minute}
+                      disabled={disabled || !mealSetting.enabled}
+                      onChange={(time) => updateMealReminder(mealType, time)}
+                    />
+                  </View>
+                );
+              })}
+            </View>
+
+            <AppButton
+              label="保存提醒"
+              icon="checkmark"
+              onPress={handleSaveReminders}
+              loading={savingReminders}
+            />
           </View>
         ) : null}
       </Card>
@@ -865,6 +1020,33 @@ function TargetMetric({
   );
 }
 
+function ReminderPermissionNotice({
+  status,
+  enabled,
+}: {
+  status: ReminderPermissionStatus;
+  enabled: boolean;
+}) {
+  if (!enabled || status === 'granted') {
+    return null;
+  }
+  const isUnsupported = status === 'unsupported';
+  return (
+    <View style={[styles.reminderNotice, isUnsupported && styles.reminderNoticeMuted]}>
+      <Ionicons
+        name={isUnsupported ? 'desktop-outline' : 'alert-circle-outline'}
+        size={18}
+        color={isUnsupported ? theme.colors.textMuted : theme.colors.warning}
+      />
+      <Text style={styles.reminderNoticeText}>
+        {isUnsupported
+          ? 'Web 暂不支持本地三餐提醒，请在 iOS 或 Android 使用。'
+          : '系统通知权限未开启，允许通知后才会收到三餐提醒。'}
+      </Text>
+    </View>
+  );
+}
+
 function PrivacyTile({
   icon,
   label,
@@ -898,6 +1080,23 @@ function formatExportResult(result: DataExportResult): string {
 function formatImportResult(result: DataImportResult): string {
   const skipped = result.photosSkipped ? `，${result.photosSkipped} 张照片未恢复` : '';
   return `${result.mode === 'replace' ? '已覆盖恢复' : '已合并导入'} ${result.meals} 条饮食记录、${result.customFoods} 个自定义食物和 ${result.photosRestored} 张照片${skipped}。`;
+}
+
+function formatReminderSectionValue(
+  settings: ReminderSettings,
+  permissionStatus: ReminderPermissionStatus,
+): string {
+  const count = activeReminderCount(settings);
+  if (count === 0) {
+    return '未开启';
+  }
+  if (permissionStatus === 'unsupported') {
+    return '当前平台不支持';
+  }
+  if (permissionStatus !== 'granted') {
+    return '系统权限未开启';
+  }
+  return `已开启 ${count} 项`;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -1098,6 +1297,121 @@ const styles = StyleSheet.create({
     gap: 7,
     paddingHorizontal: 16,
     paddingBottom: 16,
+  },
+  reminderSummaryGrid: {
+    flexDirection: 'row',
+    gap: 7,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  reminderMetric: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+    backgroundColor: theme.colors.surfaceInset,
+  },
+  reminderDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: theme.colors.textFaint,
+  },
+  reminderDotActive: {
+    backgroundColor: theme.colors.success,
+  },
+  reminderMetricLabel: {
+    color: theme.colors.textMuted,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  reminderMetricValue: {
+    color: theme.colors.text,
+    fontSize: 14,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+  reminderMasterRow: {
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 13,
+    borderRadius: 15,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+    backgroundColor: theme.colors.surfaceTint,
+    marginTop: 16,
+  },
+  reminderMasterCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  reminderMasterTitle: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  reminderMasterMeta: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
+  },
+  reminderNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 9,
+    padding: 12,
+    borderRadius: 12,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.warningSoft,
+  },
+  reminderNoticeMuted: {
+    backgroundColor: theme.colors.surfaceInset,
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+  },
+  reminderNoticeText: {
+    flex: 1,
+    color: theme.colors.text,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+  reminderMealList: {
+    gap: 9,
+  },
+  reminderMealRow: {
+    gap: 9,
+    padding: 11,
+    borderRadius: 14,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+    backgroundColor: theme.colors.surfaceRaised,
+  },
+  reminderMealHeader: {
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  reminderMealTitle: {
+    color: theme.colors.text,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  disabledRow: {
+    opacity: 0.72,
   },
   targetMetric: {
     flex: 1,

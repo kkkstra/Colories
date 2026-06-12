@@ -5,6 +5,11 @@ import { endOfLocalDayIso, startOfLocalDayIso, toLocalDateKey } from '@/lib/date
 import { resolveMealTitle } from '@/lib/mealTitle';
 import { sumMacros } from '@/lib/nutrition';
 import { normalizeMealPhotoReferences } from '@/lib/photoReference';
+import {
+  DEFAULT_REMINDER_SETTINGS,
+  reminderSettingsFromPartial,
+  validateReminderSettings,
+} from '@/lib/reminderSettings';
 import { createLocalId } from '@/lib/security';
 import type {
   AIProviderConfig,
@@ -17,10 +22,11 @@ import type {
   MealType,
   NutritionInsightAdvice,
   NutritionSource,
+  ReminderSettings,
   UserProfile,
 } from '@/types/domain';
 
-export const DATABASE_VERSION = 6;
+export const DATABASE_VERSION = 7;
 
 export const MIGRATION_V1_SQL = `
 PRAGMA journal_mode = WAL;
@@ -148,6 +154,23 @@ CREATE TABLE IF NOT EXISTS ai_insight_advice (
 );
 `;
 
+export const MIGRATION_V7_SQL = `
+CREATE TABLE IF NOT EXISTS reminder_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  enabled INTEGER NOT NULL,
+  breakfast_enabled INTEGER NOT NULL,
+  breakfast_hour INTEGER NOT NULL,
+  breakfast_minute INTEGER NOT NULL,
+  lunch_enabled INTEGER NOT NULL,
+  lunch_hour INTEGER NOT NULL,
+  lunch_minute INTEGER NOT NULL,
+  dinner_enabled INTEGER NOT NULL,
+  dinner_hour INTEGER NOT NULL,
+  dinner_minute INTEGER NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`;
+
 export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
   const versionRow = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   const currentVersion = versionRow?.user_version ?? 0;
@@ -168,6 +191,9 @@ export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
   }
   if (currentVersion < 6) {
     await db.execAsync(MIGRATION_V6_SQL);
+  }
+  if (currentVersion < 7) {
+    await db.execAsync(MIGRATION_V7_SQL);
   }
   await seedFoodCatalog(db);
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
@@ -292,6 +318,92 @@ export async function saveDefaultTargets(
     targets.protein,
     targets.carbs,
     targets.fat,
+    new Date().toISOString(),
+  );
+}
+
+type ReminderSettingsRow = {
+  enabled: number;
+  breakfast_enabled: number;
+  breakfast_hour: number;
+  breakfast_minute: number;
+  lunch_enabled: number;
+  lunch_hour: number;
+  lunch_minute: number;
+  dinner_enabled: number;
+  dinner_hour: number;
+  dinner_minute: number;
+};
+
+export async function getReminderSettings(db: SQLiteDatabase): Promise<ReminderSettings> {
+  const row = await db.getFirstAsync<ReminderSettingsRow>(
+    `SELECT enabled,
+      breakfast_enabled, breakfast_hour, breakfast_minute,
+      lunch_enabled, lunch_hour, lunch_minute,
+      dinner_enabled, dinner_hour, dinner_minute
+     FROM reminder_settings
+     WHERE id = 1`,
+  );
+  if (!row) {
+    return reminderSettingsFromPartial(DEFAULT_REMINDER_SETTINGS);
+  }
+  return reminderSettingsFromPartial({
+    enabled: row.enabled === 1,
+    meals: {
+      breakfast: {
+        enabled: row.breakfast_enabled === 1,
+        hour: row.breakfast_hour,
+        minute: row.breakfast_minute,
+      },
+      lunch: {
+        enabled: row.lunch_enabled === 1,
+        hour: row.lunch_hour,
+        minute: row.lunch_minute,
+      },
+      dinner: {
+        enabled: row.dinner_enabled === 1,
+        hour: row.dinner_hour,
+        minute: row.dinner_minute,
+      },
+    },
+  });
+}
+
+export async function saveReminderSettings(
+  db: SQLiteDatabase,
+  settings: ReminderSettings,
+): Promise<void> {
+  const nextSettings = validateReminderSettings(settings);
+  await db.runAsync(
+    `INSERT INTO reminder_settings
+      (id, enabled,
+       breakfast_enabled, breakfast_hour, breakfast_minute,
+       lunch_enabled, lunch_hour, lunch_minute,
+       dinner_enabled, dinner_hour, dinner_minute,
+       updated_at)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+      enabled = excluded.enabled,
+      breakfast_enabled = excluded.breakfast_enabled,
+      breakfast_hour = excluded.breakfast_hour,
+      breakfast_minute = excluded.breakfast_minute,
+      lunch_enabled = excluded.lunch_enabled,
+      lunch_hour = excluded.lunch_hour,
+      lunch_minute = excluded.lunch_minute,
+      dinner_enabled = excluded.dinner_enabled,
+      dinner_hour = excluded.dinner_hour,
+      dinner_minute = excluded.dinner_minute,
+      updated_at = excluded.updated_at`,
+    boolToInt(nextSettings.enabled),
+    boolToInt(nextSettings.meals.breakfast.enabled),
+    nextSettings.meals.breakfast.hour,
+    nextSettings.meals.breakfast.minute,
+    boolToInt(nextSettings.meals.lunch.enabled),
+    nextSettings.meals.lunch.hour,
+    nextSettings.meals.lunch.minute,
+    boolToInt(nextSettings.meals.dinner.enabled),
+    nextSettings.meals.dinner.hour,
+    nextSettings.meals.dinner.minute,
     new Date().toISOString(),
   );
 }
@@ -661,6 +773,10 @@ function normalizeAliasList(values: string[]): string[] {
     aliases.push(alias);
   }
   return aliases;
+}
+
+function boolToInt(value: boolean): number {
+  return value ? 1 : 0;
 }
 
 function buildFoodCatalogFilter({

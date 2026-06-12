@@ -147,12 +147,14 @@ describe('data transfer', () => {
         },
       ],
       ai_insight_advice: [],
+      reminder_settings: [reminderSettings()],
     });
 
     const { backup, skippedPhotos } = await createCaloriesBackup(db as never);
 
     expect(skippedPhotos).toBe(0);
     expect(backup.data.customFoods).toHaveLength(1);
+    expect(backup.data.reminderSettings).toHaveLength(1);
     expect(backup.data.photos).toEqual([
       { reference: 'meal-photos/lunch.jpg', mediaType: 'image/jpeg', base64: 'photo-base64' },
     ]);
@@ -167,6 +169,7 @@ describe('data transfer', () => {
       meals: [meal(7, 'meal-photos/lunch.jpg')],
       mealItems: [mealItem(7, 'custom-rice')],
       mealPhotos: [{ id: 1, meal_id: 7, uri: 'meal-photos/lunch.jpg', sort_order: 0 }],
+      reminderSettings: [reminderSettings()],
       photos: [{ reference: 'meal-photos/lunch.jpg', mediaType: 'image/jpeg', base64: 'aGVsbG8=' }],
     });
 
@@ -188,6 +191,9 @@ describe('data transfer', () => {
     expect(mockFileSystem.files.get('file://document/meal-photos/lunch.jpg')?.bytes).toEqual(
       new Uint8Array([104, 101, 108, 108, 111]),
     );
+    expect(
+      db.runAsync.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO reminder_settings')),
+    ).toBe(true);
   });
 
   it('merges records by remapping meal ids and conflicting custom food ids', async () => {
@@ -235,6 +241,16 @@ describe('data transfer', () => {
     ).toThrow('更新版本');
   });
 
+  it('accepts older backups without reminder settings', () => {
+    const backup = backupFixture();
+    const raw = JSON.parse(JSON.stringify(backup));
+    delete raw.data.reminderSettings;
+
+    const parsed = parseCaloriesBackup(JSON.stringify(raw));
+
+    expect(parsed.data.reminderSettings).toEqual([]);
+  });
+
   it('clears app data and resets the photo directory', async () => {
     const db = createMockDb();
 
@@ -246,6 +262,7 @@ describe('data transfer', () => {
       'meals',
       'ai_insight_advice',
       'ai_provider_config',
+      'reminder_settings',
       'daily_targets',
       'user_profile',
     ]) {
@@ -275,6 +292,7 @@ function createMockDb(tables: Partial<Record<string, unknown[]>> = {}) {
       if (sql.includes('FROM meal_photos')) return tables.meal_photos ?? [];
       if (sql.includes('FROM ai_provider_config')) return tables.ai_provider_config ?? [];
       if (sql.includes('FROM ai_insight_advice')) return tables.ai_insight_advice ?? [];
+      if (sql.includes('FROM reminder_settings')) return tables.reminder_settings ?? [];
       return [];
     }),
     getFirstAsync: vi.fn(async (sql: string, ...params: unknown[]) => {
@@ -318,9 +336,27 @@ function backupFixture(
       mealPhotos: [],
       aiProviderConfig: [],
       aiInsightAdvice: [],
+      reminderSettings: [],
       photos: [],
       ...data,
     },
+  };
+}
+
+function reminderSettings(): CaloriesBackupV1['data']['reminderSettings'][number] {
+  return {
+    id: 1,
+    enabled: 1,
+    breakfast_enabled: 1,
+    breakfast_hour: 8,
+    breakfast_minute: 0,
+    lunch_enabled: 1,
+    lunch_hour: 12,
+    lunch_minute: 30,
+    dinner_enabled: 1,
+    dinner_hour: 18,
+    dinner_minute: 30,
+    updated_at: '2026-06-11T00:00:00.000Z',
   };
 }
 

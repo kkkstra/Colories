@@ -38,6 +38,17 @@ export interface DailyTargets extends MacroValues {
   date?: string;
 }
 
+export interface MealReminderSetting {
+  enabled: boolean;
+  hour: number;
+  minute: number;
+}
+
+export interface ReminderSettings {
+  enabled: boolean;
+  meals: Record<MainMealType, MealReminderSetting>;
+}
+
 export interface FoodCatalogItem extends MacroValues {
   id: string;
   nameZh: string;

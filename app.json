@@ -62,6 +62,13 @@
           "barcodeScannerEnabled": false
         }
       ],
+      [
+        "expo-notifications",
+        {
+          "color": "#275DFF",
+          "defaultChannel": "meal-reminders"
+        }
+      ],
       "@react-native-community/datetimepicker",
       "expo-sqlite",
       "expo-sharing",

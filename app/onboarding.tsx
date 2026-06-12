@@ -1,19 +1,42 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Redirect, router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { ChoiceChips } from '@/components/ui/ChoiceChips';
 import { FormField } from '@/components/ui/FormField';
+import { ReminderTimePicker } from '@/components/ui/ReminderTimePicker';
 import { Screen } from '@/components/ui/Screen';
 import { theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
 import { showAlert } from '@/lib/alert';
 import { calculateTargets } from '@/lib/nutrition';
-import type { ActivityLevel, BiologicalSex, FitnessGoal, UserProfile } from '@/types/domain';
+import {
+  cloneReminderSettings,
+  DEFAULT_REMINDER_SETTINGS,
+  formatReminderTime,
+  REMINDER_MEAL_LABELS,
+  REMINDER_MEAL_TYPES,
+} from '@/lib/reminderSettings';
+import type {
+  ActivityLevel,
+  BiologicalSex,
+  FitnessGoal,
+  MainMealType,
+  ReminderSettings,
+  UserProfile,
+} from '@/types/domain';
 
-type OnboardingStepId = 'age' | 'height' | 'weight' | 'sex' | 'activity' | 'goal' | 'review';
+type OnboardingStepId =
+  | 'age'
+  | 'height'
+  | 'weight'
+  | 'sex'
+  | 'activity'
+  | 'goal'
+  | 'reminders'
+  | 'review';
 
 const STEPS: {
   id: OnboardingStepId;
@@ -65,6 +88,13 @@ const STEPS: {
     icon: 'flag-outline',
   },
   {
+    id: 'reminders',
+    label: '提醒',
+    title: '要不要提醒你记录三餐',
+    helper: '开启后会在你设定的时间提醒记录早餐、午餐和晚餐。',
+    icon: 'notifications-outline',
+  },
+  {
     id: 'review',
     label: '确认',
     title: '这是你的起始目标',
@@ -93,7 +123,7 @@ const GOAL_OPTIONS = [
 ] as const;
 
 export default function OnboardingScreen() {
-  const { loading, profile, persistProfile } = useApp();
+  const { loading, profile, persistProfile, persistReminderSettings } = useApp();
   const [stepIndex, setStepIndex] = useState(0);
   const [age, setAge] = useState('28');
   const [height, setHeight] = useState('175');
@@ -101,6 +131,9 @@ export default function OnboardingScreen() {
   const [sex, setSex] = useState<BiologicalSex>('male');
   const [activityLevel, setActivityLevel] = useState<ActivityLevel>('moderate');
   const [goal, setGoal] = useState<FitnessGoal>('maintain');
+  const [reminderDraft, setReminderDraft] = useState<ReminderSettings>(() =>
+    cloneReminderSettings(DEFAULT_REMINDER_SETTINGS),
+  );
   const [saving, setSaving] = useState(false);
 
   const draft = useMemo<UserProfile>(
@@ -148,6 +181,9 @@ export default function OnboardingScreen() {
     setSaving(true);
     try {
       await persistProfile(draft, targets);
+      await persistReminderSettings(reminderDraft, {
+        requestPermission: reminderDraft.enabled,
+      });
       router.replace('/');
     } catch (error) {
       showAlert('保存失败', error instanceof Error ? error.message : String(error));
@@ -208,6 +244,8 @@ export default function OnboardingScreen() {
           setActivityLevel,
           goal,
           setGoal,
+          reminderDraft,
+          setReminderDraft,
           targets,
         })}</View>
       </View>
@@ -254,6 +292,8 @@ function renderStepContent(
     setActivityLevel: (value: ActivityLevel) => void;
     goal: FitnessGoal;
     setGoal: (value: FitnessGoal) => void;
+    reminderDraft: ReminderSettings;
+    setReminderDraft: (value: ReminderSettings) => void;
     targets: ReturnType<typeof calculateTargets>;
   },
 ) {
@@ -326,14 +366,125 @@ function renderStepContent(
       />
     );
   }
+  if (step === 'reminders') {
+    return (
+      <OnboardingReminderStep
+        settings={props.reminderDraft}
+        onChange={props.setReminderDraft}
+      />
+    );
+  }
   return (
-    <View style={styles.targetGrid}>
-      <Target label="热" value={props.targets.calories} color={theme.colors.primary} />
-      <Target label="蛋" value={props.targets.protein} color={theme.colors.protein} />
-      <Target label="碳" value={props.targets.carbs} color={theme.colors.carbs} />
-      <Target label="脂" value={props.targets.fat} color={theme.colors.fat} />
+    <View style={styles.reviewStack}>
+      <View style={styles.targetGrid}>
+        <Target label="热" value={props.targets.calories} color={theme.colors.primary} />
+        <Target label="蛋" value={props.targets.protein} color={theme.colors.protein} />
+        <Target label="碳" value={props.targets.carbs} color={theme.colors.carbs} />
+        <Target label="脂" value={props.targets.fat} color={theme.colors.fat} />
+      </View>
+      <View style={styles.reminderReview}>
+        <Ionicons
+          name={props.reminderDraft.enabled ? 'notifications' : 'notifications-off-outline'}
+          size={18}
+          color={props.reminderDraft.enabled ? theme.colors.primary : theme.colors.textMuted}
+        />
+        <Text style={styles.reminderReviewText}>
+          {formatReminderSummary(props.reminderDraft)}
+        </Text>
+      </View>
     </View>
   );
+}
+
+function OnboardingReminderStep({
+  settings,
+  onChange,
+}: {
+  settings: ReminderSettings;
+  onChange: (value: ReminderSettings) => void;
+}) {
+  const updateEnabled = (enabled: boolean) => {
+    onChange({ ...settings, enabled });
+  };
+
+  const updateMeal = (
+    mealType: MainMealType,
+    nextSetting: Partial<ReminderSettings['meals'][MainMealType]>,
+  ) => {
+    onChange({
+      ...settings,
+      meals: {
+        ...settings.meals,
+        [mealType]: {
+          ...settings.meals[mealType],
+          ...nextSetting,
+        },
+      },
+    });
+  };
+
+  return (
+    <View style={styles.reminderSetup}>
+      <View style={styles.reminderMasterRow}>
+        <View style={styles.reminderMasterCopy}>
+          <Text style={styles.reminderMasterTitle}>开启记录提醒</Text>
+          <Text style={styles.reminderMasterMeta}>
+            默认提醒早餐、午餐和晚餐，可单独关闭。
+          </Text>
+        </View>
+        <Switch
+          value={settings.enabled}
+          onValueChange={updateEnabled}
+          trackColor={{ true: theme.colors.primarySoft }}
+          thumbColor={settings.enabled ? theme.colors.primary : '#FFFFFF'}
+        />
+      </View>
+
+      <View style={styles.reminderMealList}>
+        {REMINDER_MEAL_TYPES.map((mealType) => {
+          const mealSetting = settings.meals[mealType];
+          const disabled = !settings.enabled;
+          return (
+            <View key={mealType} style={[styles.reminderMealRow, disabled && styles.disabledRow]}>
+              <View style={styles.reminderMealHeader}>
+                <Text style={styles.reminderMealTitle}>{REMINDER_MEAL_LABELS[mealType]}</Text>
+                <Switch
+                  value={mealSetting.enabled}
+                  disabled={disabled}
+                  onValueChange={(enabled) => updateMeal(mealType, { enabled })}
+                  trackColor={{ true: theme.colors.primarySoft }}
+                  thumbColor={mealSetting.enabled ? theme.colors.primary : '#FFFFFF'}
+                />
+              </View>
+              <ReminderTimePicker
+                label="提醒时间"
+                hour={mealSetting.hour}
+                minute={mealSetting.minute}
+                disabled={disabled || !mealSetting.enabled}
+                onChange={(time) => updateMeal(mealType, time)}
+              />
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function formatReminderSummary(settings: ReminderSettings): string {
+  if (!settings.enabled) {
+    return '暂不开启三餐提醒';
+  }
+  const enabledMeals = REMINDER_MEAL_TYPES.filter((mealType) => settings.meals[mealType].enabled);
+  if (enabledMeals.length === 0) {
+    return '提醒总开关已开启，但三餐均未启用';
+  }
+  return enabledMeals
+    .map((mealType) => {
+      const meal = settings.meals[mealType];
+      return `${REMINDER_MEAL_LABELS[mealType]} ${formatReminderTime(meal)}`;
+    })
+    .join(' · ');
 }
 
 function Target({ label, value, color }: { label: string; value: number; color: string }) {
@@ -497,6 +648,88 @@ const styles = StyleSheet.create({
   targetGrid: {
     flexDirection: 'row',
     gap: 8,
+  },
+  reviewStack: {
+    gap: 12,
+  },
+  reminderReview: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    borderRadius: 13,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+    backgroundColor: theme.colors.surfaceInset,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  reminderReviewText: {
+    flex: 1,
+    minWidth: 0,
+    color: theme.colors.text,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '800',
+  },
+  reminderSetup: {
+    gap: 12,
+  },
+  reminderMasterRow: {
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 15,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+    backgroundColor: theme.colors.surfaceTint,
+    padding: 13,
+  },
+  reminderMasterCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  reminderMasterTitle: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  reminderMasterMeta: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
+  },
+  reminderMealList: {
+    gap: 9,
+  },
+  reminderMealRow: {
+    gap: 9,
+    borderRadius: 14,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+    backgroundColor: theme.colors.surfaceRaised,
+    padding: 11,
+  },
+  reminderMealHeader: {
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  reminderMealTitle: {
+    color: theme.colors.text,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  disabledRow: {
+    opacity: 0.72,
   },
   target: {
     flex: 1,
