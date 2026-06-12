@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -39,6 +39,7 @@ const CATEGORY_ICONS: Record<FoodCategory, keyof typeof Ionicons.glyphMap> = {
 
 export default function SelectFoodScreen() {
   const db = useSQLiteContext();
+  const { queueTarget } = useLocalSearchParams<{ queueTarget?: string }>();
   const { queueMealItem } = useApp();
   const scrollRef = useRef<ScrollView>(null);
   const [query, setQuery] = useState('');
@@ -114,14 +115,17 @@ export default function SelectFoodScreen() {
   };
 
   const addFood = (food: ManagedFood) => {
-    queueMealItem({
-      id: createLocalId('food'),
-      name: food.nameZh,
-      weightGrams: 100,
-      ...scaleNutrition(food, 100),
-      source: 'catalog',
-      catalogFoodId: food.id,
-    });
+    queueMealItem(
+      {
+        id: createLocalId('food'),
+        name: food.nameZh,
+        weightGrams: 100,
+        ...scaleNutrition(food, 100),
+        source: 'catalog',
+        catalogFoodId: food.id,
+      },
+      queueTarget,
+    );
     router.back();
   };
 
@@ -156,7 +160,11 @@ export default function SelectFoodScreen() {
           onPress={() =>
             router.push({
               pathname: '/edit-food',
-              params: { returnTo: 'select-food', name: query.trim() },
+              params: {
+                returnTo: 'select-food',
+                name: query.trim(),
+                ...(queueTarget ? { queueTarget } : {}),
+              },
             })
           }
           style={({ pressed }) => [styles.createButton, pressed && styles.pressed]}

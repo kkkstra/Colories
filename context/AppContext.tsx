@@ -22,18 +22,29 @@ import { getApiKey, saveApiKey } from '@/lib/secureStorage';
 import { syncTodayNutritionWidget } from '@/lib/widgetSync';
 import type { AIProviderConfig, DailyTargets, MealItemDraft, UserProfile } from '@/types/domain';
 
+export const RECORD_MEAL_ITEM_TARGET = 'record';
+
+export function createEditMealItemTarget(mealId: number): string {
+  return `edit-meal:${mealId}`;
+}
+
+interface QueuedMealItem {
+  item: MealItemDraft;
+  target: string;
+}
+
 interface AppContextValue {
   loading: boolean;
   profile: UserProfile | null;
   targets: DailyTargets | null;
   providerConfig: AIProviderConfig | null;
   hasApiKey: boolean;
-  queuedMealItem: MealItemDraft | null;
+  queuedMealItem: QueuedMealItem | null;
   refresh: () => Promise<void>;
   persistProfile: (profile: UserProfile, targets?: DailyTargets) => Promise<void>;
   persistTargets: (targets: DailyTargets) => Promise<void>;
   persistProvider: (config: AIProviderConfig, apiKey: string) => Promise<void>;
-  queueMealItem: (item: MealItemDraft) => void;
+  queueMealItem: (item: MealItemDraft, target?: string) => void;
   clearQueuedMealItem: () => void;
 }
 
@@ -46,7 +57,7 @@ export function AppProvider({ children }: PropsWithChildren) {
   const [targets, setTargets] = useState<DailyTargets | null>(null);
   const [providerConfig, setProviderConfig] = useState<AIProviderConfig | null>(null);
   const [hasApiKey, setHasApiKey] = useState(false);
-  const [queuedMealItem, setQueuedMealItem] = useState<MealItemDraft | null>(null);
+  const [queuedMealItem, setQueuedMealItem] = useState<QueuedMealItem | null>(null);
 
   const refresh = useCallback(async () => {
     const [nextProfile, nextTargets, nextProvider, apiKey] = await Promise.all([
@@ -99,8 +110,8 @@ export function AppProvider({ children }: PropsWithChildren) {
     [db],
   );
 
-  const queueMealItem = useCallback((item: MealItemDraft) => {
-    setQueuedMealItem(item);
+  const queueMealItem = useCallback((item: MealItemDraft, target = RECORD_MEAL_ITEM_TARGET) => {
+    setQueuedMealItem({ item, target });
   }, []);
 
   const clearQueuedMealItem = useCallback(() => {

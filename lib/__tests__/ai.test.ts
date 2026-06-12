@@ -2,9 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   AIProviderError,
+  buildMealSuggestionRequestBody,
   buildInsightAdviceRequestBody,
   buildRequestBody,
+  generateMealSuggestionAdvice,
   generateNutritionInsightAdvice,
+  parseMealSuggestionContent,
   parseInsightAdviceContent,
   parseRecognitionContent,
   testProviderConfiguration,
@@ -29,6 +32,53 @@ const validAdviceContent = JSON.stringify({
   summary: '最近 7 天热量波动较大，蛋白质接近目标但碳水集中在少数几天。',
   actions: ['把晚餐主食固定到一拳左右。', '每餐保留一个稳定蛋白质来源。'],
   warnings: ['有 2 天没有记录，趋势可能偏低。'],
+});
+
+const mealCandidates = [
+  {
+    id: 'chicken',
+    name: '鸡胸肉',
+    category: 'protein' as const,
+    servingGrams: 120,
+    calories: 198,
+    protein: 37.2,
+    carbs: 0,
+    fat: 4.3,
+  },
+  {
+    id: 'rice',
+    name: '白米饭',
+    category: 'staple' as const,
+    servingGrams: 100,
+    calories: 130,
+    protein: 2.7,
+    carbs: 28.2,
+    fat: 0.3,
+  },
+  {
+    id: 'broccoli',
+    name: '西兰花',
+    category: 'vegetable' as const,
+    servingGrams: 200,
+    calories: 70,
+    protein: 4.8,
+    carbs: 14.4,
+    fat: 0.8,
+  },
+];
+
+const validMealSuggestionContent = JSON.stringify({
+  title: '清淡补蛋白',
+  summary: '今天脂肪剩得不多，这餐适合用低脂蛋白配蔬菜和小份主食。',
+  combo: [
+    { food_id: 'chicken', name: '鸡胸肉', serving_grams: 120, reason: '补蛋白且脂肪较低' },
+    { food_id: 'broccoli', name: '西兰花', serving_grams: 200, reason: '增加饱腹感' },
+    { food_id: 'rice', name: '白米饭', serving_grams: 80, reason: '少量补碳水' },
+  ],
+  alternatives: [
+    { food_id: 'rice', name: '白米饭', serving_grams: 60, reason: '热量更轻' },
+  ],
+  warnings: ['营养值按候选食物估算。'],
 });
 
 describe('AI response handling', () => {
@@ -91,12 +141,77 @@ describe('AI response handling', () => {
     expect(JSON.stringify(body)).not.toContain('image_url');
   });
 
+  it('builds text-only meal suggestion requests from compact candidates', () => {
+    const body = buildMealSuggestionRequestBody(
+      { baseUrl: 'https://example.com/v1', model: 'chat-model', responseMode: 'json_schema' },
+      {
+        dateKey: '2026-06-12',
+        targetType: 'lunch',
+        scope: 'meal',
+        mealLabel: '午餐',
+        totals: { calories: 1430, protein: 72, carbs: 170, fat: 48 },
+        targets: { calories: 2000, protein: 120, carbs: 230, fat: 60 },
+        remaining: { calories: 570, protein: 48, carbs: 60, fat: 12 },
+        candidates: mealCandidates,
+      },
+    );
+
+    expect(body.response_format).toMatchObject({ type: 'json_schema' });
+    expect(JSON.stringify(body)).not.toContain('image_url');
+    expect(JSON.stringify(body)).toContain('只从 candidates 里挑食物');
+    const userContent = (body.messages as any[])[1].content as string;
+    expect(userContent).toContain('下一顿正餐（午餐）');
+    expect(userContent).toContain('"target_type":"lunch"');
+    expect(userContent).toContain('"scope":"meal"');
+    expect(userContent).toContain('"id":"chicken"');
+    expect(userContent).toContain('"serving_grams":120');
+    expect(userContent).not.toContain('aliases');
+    expect(userContent).not.toContain('sourceReference');
+  });
+
+  it('builds full-day next-day meal suggestion requests', () => {
+    const body = buildMealSuggestionRequestBody(
+      { baseUrl: 'https://example.com/v1', model: 'chat-model', responseMode: 'json_object' },
+      {
+        dateKey: '2026-06-13',
+        targetType: 'full_day',
+        scope: 'full_day',
+        mealLabel: '明日整天',
+        totals: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+        targets: { calories: 2000, protein: 120, carbs: 230, fat: 60 },
+        remaining: { calories: 2000, protein: 120, carbs: 230, fat: 60 },
+        candidates: mealCandidates,
+      },
+    );
+
+    const userContent = (body.messages as any[])[1].content as string;
+    expect(userContent).toContain('明天整天怎么吃');
+    expect(userContent).toContain('"target_type":"full_day"');
+    expect(userContent).toContain('"scope":"full_day"');
+    expect(userContent).toContain('明日早餐、午餐、晚餐');
+    expect(JSON.stringify(body)).not.toContain('image_url');
+  });
+
   it('parses insight advice JSON', () => {
     const parsed = parseInsightAdviceContent(`\`\`\`json\n${validAdviceContent}\n\`\`\``);
 
     expect(parsed.title).toBe('晚餐稳一点');
     expect(parsed.actions).toHaveLength(2);
     expect(parsed.warnings[0]).toContain('趋势可能偏低');
+  });
+
+  it('parses meal suggestion JSON and resolves candidate nutrition', () => {
+    const parsed = parseMealSuggestionContent(
+      `\`\`\`json\n${validMealSuggestionContent}\n\`\`\``,
+      mealCandidates,
+    );
+
+    expect(parsed.title).toBe('清淡补蛋白');
+    expect(parsed.combo).toHaveLength(3);
+    expect(parsed.combo[0]).toMatchObject({ foodId: 'chicken', calories: 198 });
+    expect(parsed.combo[2]).toMatchObject({ foodId: 'rice', servingGrams: 80, calories: 104 });
+    expect(parsed.alternatives[0].reason).toContain('热量');
+    expect(parsed.warnings[0]).toContain('估算');
   });
 
   it('requests and parses nutrition insight advice', async () => {
@@ -118,6 +233,34 @@ describe('AI response handling', () => {
     );
 
     expect(result.summary).toContain('热量波动');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('requests and parses meal suggestion advice', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ choices: [{ message: { content: validMealSuggestionContent } }] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const result = await generateMealSuggestionAdvice(
+      { baseUrl: 'https://example.com/v1', model: 'chat-model', responseMode: 'json_object' },
+      'secret-key',
+      {
+        dateKey: '2026-06-12',
+        targetType: 'lunch',
+        scope: 'meal',
+        mealLabel: '午餐',
+        totals: { calories: 1430, protein: 72, carbs: 170, fat: 48 },
+        targets: { calories: 2000, protein: 120, carbs: 230, fat: 60 },
+        remaining: { calories: 570, protein: 48, carbs: 60, fat: 12 },
+        candidates: mealCandidates,
+      },
+      fetchMock as typeof fetch,
+    );
+
+    expect(result.summary).toContain('低脂蛋白');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

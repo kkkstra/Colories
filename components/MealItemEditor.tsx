@@ -1,9 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
+import { DecimalNumberInput } from '@/components/ui/DecimalNumberInput';
 import { theme } from '@/constants/Theme';
 import { applyRecognitionChoice } from '@/lib/mealItemDrafts';
+import { round } from '@/lib/nutrition';
 import type {
   MealItemDraft,
   MealItemRecognitionChoice,
@@ -32,12 +35,28 @@ export function MealItemEditor({
   onAddToCatalog,
   addingToCatalog = false,
 }: Props) {
-  const setNumber = (
-    key: 'weightGrams' | 'calories' | 'protein' | 'carbs' | 'fat',
-    value: string,
-  ) => {
-    const parsed = Number(value);
-    onChange({ ...item, [key]: Number.isFinite(parsed) ? Math.max(0, parsed) : 0 });
+  const [syncNutritionWithWeight, setSyncNutritionWithWeight] = useState(true);
+
+  const setMacroValue = (key: 'calories' | 'protein' | 'carbs' | 'fat', value: number) => {
+    onChange({ ...item, [key]: Math.max(0, value) });
+  };
+
+  const setWeightGrams = (value: number) => {
+    const nextWeightGrams = Math.max(0, value);
+    if (!syncNutritionWithWeight || item.weightGrams <= 0) {
+      onChange({ ...item, weightGrams: nextWeightGrams });
+      return;
+    }
+
+    const factor = nextWeightGrams / item.weightGrams;
+    onChange({
+      ...item,
+      weightGrams: nextWeightGrams,
+      calories: round(item.calories * factor, 1),
+      protein: round(item.protein * factor, 1),
+      carbs: round(item.carbs * factor, 1),
+      fat: round(item.fat * factor, 1),
+    });
   };
 
   return (
@@ -124,17 +143,39 @@ export function MealItemEditor({
         </Pressable>
       ) : null}
 
+      <Pressable
+        accessibilityLabel="改重量时同步营养"
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: syncNutritionWithWeight }}
+        onPress={() => setSyncNutritionWithWeight((current) => !current)}
+        style={({ pressed }) => [styles.syncRow, pressed && styles.pressed]}
+      >
+        <View style={[styles.checkbox, syncNutritionWithWeight && styles.checkboxChecked]}>
+          {syncNutritionWithWeight ? (
+            <Ionicons name="checkmark" size={15} color="#FFFFFF" />
+          ) : null}
+        </View>
+        <View style={styles.syncCopy}>
+          <Text style={styles.syncTitle}>改重量时同步营养</Text>
+          <Text style={styles.syncHint}>
+            {syncNutritionWithWeight
+              ? '热量、蛋白质、碳水和脂肪会按比例变化'
+              : '只改重量，营养值保持不变'}
+          </Text>
+        </View>
+      </Pressable>
+
       <View style={styles.fields}>
         <View style={styles.primaryFields}>
           <NumberField
             label="重量 g"
             value={item.weightGrams}
-            onChange={(value) => setNumber('weightGrams', value)}
+            onChange={setWeightGrams}
           />
           <NumberField
             label="热量 kcal"
             value={item.calories}
-            onChange={(value) => setNumber('calories', value)}
+            onChange={(value) => setMacroValue('calories', value)}
             highlight
           />
         </View>
@@ -142,17 +183,17 @@ export function MealItemEditor({
           <NumberField
             label="蛋白质 g"
             value={item.protein}
-            onChange={(value) => setNumber('protein', value)}
+            onChange={(value) => setMacroValue('protein', value)}
           />
           <NumberField
             label="碳水 g"
             value={item.carbs}
-            onChange={(value) => setNumber('carbs', value)}
+            onChange={(value) => setMacroValue('carbs', value)}
           />
           <NumberField
             label="脂肪 g"
             value={item.fat}
-            onChange={(value) => setNumber('fat', value)}
+            onChange={(value) => setMacroValue('fat', value)}
           />
         </View>
       </View>
@@ -200,16 +241,15 @@ function NumberField({
 }: {
   label: string;
   value: number;
-  onChange: (value: string) => void;
+  onChange: (value: number) => void;
   highlight?: boolean;
 }) {
   return (
     <View style={styles.numberField}>
       <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput
-        value={String(value)}
-        onChangeText={onChange}
-        keyboardType="decimal-pad"
+      <DecimalNumberInput
+        value={value}
+        onValueChange={onChange}
         style={[styles.input, highlight && styles.inputHighlight]}
         selectTextOnFocus
       />
@@ -386,6 +426,47 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontSize: 13,
     fontWeight: '900',
+  },
+  syncRow: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderSoft,
+    backgroundColor: theme.colors.surfaceRaised,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 7,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+    backgroundColor: theme.colors.surfaceInset,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: {
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primary,
+  },
+  syncCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  syncTitle: {
+    color: theme.colors.text,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  syncHint: {
+    color: theme.colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 15,
   },
   pressed: {
     opacity: 0.72,

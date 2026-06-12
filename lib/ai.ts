@@ -6,6 +6,11 @@ import type {
   AIRecognizedFood,
   AIResponseMode,
   DailyTargets,
+  MealSuggestionAdvice,
+  MealSuggestionCandidate,
+  MealSuggestionFood,
+  MealSuggestionScope,
+  MealSuggestionTargetType,
   FoodRecognitionResult,
   MacroValues,
   NutritionInsightAdvice,
@@ -79,6 +84,48 @@ const INSIGHT_ADVICE_SCHEMA = {
   },
 } as const;
 
+const MEAL_SUGGESTION_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['title', 'summary', 'combo', 'alternatives', 'warnings'],
+  properties: {
+    title: { type: 'string' },
+    summary: { type: 'string' },
+    combo: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name', 'serving_grams', 'reason'],
+        properties: {
+          food_id: { type: 'string' },
+          name: { type: 'string' },
+          serving_grams: { type: 'number' },
+          reason: { type: 'string' },
+        },
+      },
+    },
+    alternatives: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name', 'serving_grams', 'reason'],
+        properties: {
+          food_id: { type: 'string' },
+          name: { type: 'string' },
+          serving_grams: { type: 'number' },
+          reason: { type: 'string' },
+        },
+      },
+    },
+    warnings: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+  },
+} as const;
+
 type FetchLike = typeof fetch;
 
 export interface NutritionInsightAdviceInput {
@@ -86,6 +133,17 @@ export interface NutritionInsightAdviceInput {
   days: readonly (MacroValues & { dateKey: string })[];
   periodDays?: number;
   missingDays?: number;
+}
+
+export interface MealSuggestionAdviceInput {
+  dateKey: string;
+  targetType: MealSuggestionTargetType;
+  scope: MealSuggestionScope;
+  mealLabel: string;
+  totals: MacroValues;
+  targets: DailyTargets;
+  remaining: MacroValues;
+  candidates: readonly MealSuggestionCandidate[];
 }
 
 export class AIProviderError extends Error {
@@ -198,6 +256,57 @@ export async function generateNutritionInsightAdvice(
     const payload = (await response.json()) as Record<string, unknown>;
     const content = extractMessageContent(payload);
     return parseInsightAdviceContent(content);
+  } catch (error) {
+    if (error instanceof AIProviderError) {
+      throw error;
+    }
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new AIProviderError('模型服务响应超时，请稍后再试。', 'timeout');
+    }
+    throw new AIProviderError(`无法连接模型服务：${safeErrorMessage(error, apiKey)}`, 'network');
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function generateMealSuggestionAdvice(
+  config: AIProviderConfig,
+  apiKey: string,
+  input: MealSuggestionAdviceInput,
+  fetchImpl: FetchLike = fetch,
+): Promise<MealSuggestionAdvice> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetchImpl(toChatCompletionsUrl(config.baseUrl), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(buildMealSuggestionRequestBody(config, input)),
+      signal: controller.signal,
+    });
+    if (response.status === 401 || response.status === 403) {
+      throw new AIProviderError('API Key 无效或没有该模型的访问权限。', 'auth');
+    }
+    if (response.status === 429) {
+      throw new AIProviderError('模型服务请求过于频繁或余额不足，请稍后重试。', 'rate_limit');
+    }
+    if (!response.ok) {
+      const details = safeErrorMessage(
+        extractProviderErrorMessage(await response.text()),
+        apiKey,
+      );
+      throw new AIProviderError(
+        `模型服务返回 ${response.status}：${details.slice(0, 180)}`,
+        response.status === 400 || response.status === 404 ? 'unsupported' : 'network',
+      );
+    }
+
+    const payload = (await response.json()) as Record<string, unknown>;
+    const content = extractMessageContent(payload);
+    return parseMealSuggestionContent(content, input.candidates);
   } catch (error) {
     if (error instanceof AIProviderError) {
       throw error;
@@ -378,6 +487,79 @@ export function buildInsightAdviceRequestBody(
   return body;
 }
 
+export function buildMealSuggestionRequestBody(
+  config: AIProviderConfig,
+  input: MealSuggestionAdviceInput,
+): Record<string, unknown> {
+  const data = {
+    date: input.dateKey,
+    target_type: input.targetType,
+    scope: input.scope,
+    meal_label: input.mealLabel,
+    totals: normalizeInsightNumbers(input.totals),
+    targets: normalizeInsightNumbers(input.targets),
+    remaining: normalizeInsightNumbers(input.remaining),
+    candidates: input.candidates.map((candidate) => ({
+      id: candidate.id,
+      name: candidate.name,
+      category: candidate.category,
+      serving_grams: candidate.servingGrams,
+      nutrition: normalizeInsightNumbers(candidate),
+    })),
+  };
+  const body: Record<string, unknown> = {
+    model: config.model.trim(),
+    temperature: 0.25,
+    messages: [
+      {
+        role: 'system',
+        content:
+          '你是谨慎、具体的正餐与全天饮食决策助手。只基于记录、目标、建议范围和候选食物给建议，不提供医疗建议，不诊断疾病，不夸大估算准确性。',
+      },
+      {
+        role: 'user',
+        content: `${buildMealSuggestionPromptIntro(input)}
+要求：
+- 只从 candidates 里挑食物；不要编造 candidates 以外的食物。
+- ${input.scope === 'full_day'
+  ? 'combo 给 2-3 个能覆盖明日早餐、午餐、晚餐节奏的候选食物，reason 标明更适合放在哪一餐。'
+  : `combo 给 2-3 个可一起吃的${input.mealLabel}组成，优先照顾剩余蛋白、碳水、脂肪和热量。`}
+- alternatives 给 2-3 个替代单品，方便用户按口味替换。
+- 每个食物必须包含候选 food_id、name、serving_grams 和一句短 reason。
+- title 12 个中文以内；summary 一句话说明${input.scope === 'full_day' ? '明日全天' : '今天这餐'}的取舍。
+- warnings 只写明显超标、估算或配置风险；没有就返回空数组。
+- 如果 remaining.calories 已经小于 0，建议清淡一点，不要鼓励补足所有宏量。
+- 不要要求用户节食到低于目标很多，不要使用医疗诊断或保证性表达。
+
+数据：${JSON.stringify(data)}
+
+只输出 JSON，字段为 title, summary, combo, alternatives, warnings。`,
+      },
+    ],
+  };
+
+  if (config.responseMode === 'json_schema') {
+    body.response_format = {
+      type: 'json_schema',
+      json_schema: {
+        name: 'meal_suggestion_advice',
+        strict: true,
+        schema: MEAL_SUGGESTION_SCHEMA,
+      },
+    };
+  } else if (config.responseMode === 'json_object') {
+    body.response_format = { type: 'json_object' };
+  }
+  return body;
+}
+
+function buildMealSuggestionPromptIntro(input: MealSuggestionAdviceInput): string {
+  if (input.scope === 'full_day') {
+    return `晚餐时间已过，请根据明天的目标热量和三大营养素，给出“明天整天怎么吃”的中文 JSON 建议。`;
+  }
+  return `根据下一顿正餐（${input.mealLabel}）以及今天已经摄入的热量和三大营养素，给出“这餐还适合吃什么”的中文 JSON 建议。`;
+}
+
 export function parseRecognitionContent(content: string): FoodRecognitionResult {
   const cleaned = content
     .trim()
@@ -428,6 +610,38 @@ export function parseInsightAdviceContent(content: string): NutritionInsightAdvi
     title: title || '本周建议',
     summary: parsed.summary.trim(),
     actions,
+    warnings: normalizeStringList(parsed.warnings, 2),
+  };
+}
+
+export function parseMealSuggestionContent(
+  content: string,
+  candidates: readonly MealSuggestionCandidate[] = [],
+): MealSuggestionAdvice {
+  const cleaned = content
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    throw new AIProviderError('模型没有返回有效当前餐建议 JSON。', 'invalid_response');
+  }
+
+  if (!isObject(parsed) || typeof parsed.summary !== 'string' || !parsed.summary.trim()) {
+    throw new AIProviderError('模型当前餐建议 JSON 缺少 summary。', 'invalid_response');
+  }
+  const combo = parseMealSuggestionFoods(parsed.combo, candidates, 3);
+  if (combo.length === 0) {
+    throw new AIProviderError('模型当前餐建议 JSON 缺少 combo。', 'invalid_response');
+  }
+  const title = typeof parsed.title === 'string' ? parsed.title.trim() : '';
+  return {
+    title: title || '当前餐建议',
+    summary: parsed.summary.trim(),
+    combo,
+    alternatives: parseMealSuggestionFoods(parsed.alternatives, candidates, 3),
     warnings: normalizeStringList(parsed.warnings, 2),
   };
 }
@@ -502,6 +716,45 @@ function normalizeStringList(value: unknown, maxLength: number): string[] {
     .map((item) => item.trim())
     .filter(Boolean)
     .slice(0, maxLength);
+}
+
+function parseMealSuggestionFoods(
+  value: unknown,
+  candidates: readonly MealSuggestionCandidate[],
+  maxLength: number,
+): MealSuggestionFood[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => parseMealSuggestionFood(item, candidates))
+    .filter((food): food is MealSuggestionFood => food !== null)
+    .slice(0, maxLength);
+}
+
+function parseMealSuggestionFood(
+  value: unknown,
+  candidates: readonly MealSuggestionCandidate[],
+): MealSuggestionFood | null {
+  if (!isObject(value) || typeof value.name !== 'string') {
+    return null;
+  }
+  const foodId = typeof value.food_id === 'string' ? value.food_id : undefined;
+  const servingGrams = clampNumber(value.serving_grams, 100, 1, 1000);
+  const candidate = candidates.find((item) => item.id === foodId)
+    ?? candidates.find((item) => item.name === value.name);
+  const factor = candidate ? servingGrams / candidate.servingGrams : 1;
+  return {
+    foodId: candidate?.id ?? foodId,
+    name: candidate?.name ?? value.name.trim(),
+    category: candidate?.category,
+    servingGrams,
+    calories: candidate ? roundForInsight(candidate.calories * factor) : 0,
+    protein: candidate ? roundForInsight(candidate.protein * factor) : 0,
+    carbs: candidate ? roundForInsight(candidate.carbs * factor) : 0,
+    fat: candidate ? roundForInsight(candidate.fat * factor) : 0,
+    reason: typeof value.reason === 'string' ? value.reason.trim() : undefined,
+  };
 }
 
 function normalizeInsightNumbers(values: MacroValues): MacroValues {

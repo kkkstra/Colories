@@ -8,8 +8,10 @@ import {
   MIGRATION_V4_SQL,
   MIGRATION_V5_SQL,
   MIGRATION_V6_SQL,
+  getCachedMealSuggestionAdvice,
   getCachedInsightAdvice,
   migrateDatabase,
+  saveCachedMealSuggestionAdvice,
   saveCachedInsightAdvice,
   saveMeal,
   saveCustomFood,
@@ -98,6 +100,50 @@ describe('database migration', () => {
     expect(cached?.actions).toEqual(['主食固定一拳', '晚餐加蔬菜']);
   });
 
+  it('caches meal suggestion advice in the existing AI advice table', async () => {
+    const combo = [
+      {
+        foodId: 'chicken',
+        name: '鸡胸肉',
+        servingGrams: 120,
+        calories: 198,
+        protein: 37.2,
+        carbs: 0,
+        fat: 4.3,
+        reason: '补蛋白',
+      },
+    ];
+    const runAsync = vi.fn().mockResolvedValue({ lastInsertRowId: 1, changes: 1 });
+    const db = {
+      getFirstAsync: vi.fn().mockResolvedValue({
+        id: 'meal:2026-06-12:lunch',
+        data_hash: 'hash-2',
+        title: '清淡补蛋白',
+        summary: '午餐适合低脂蛋白配蔬菜。',
+        actions_json: JSON.stringify({ combo, alternatives: [] }),
+        warnings_json: JSON.stringify(['按候选估算']),
+        updated_at: '2026-06-12T00:00:00.000Z',
+      }),
+      runAsync,
+    };
+
+    const saved = await saveCachedMealSuggestionAdvice(db as never, {
+      id: 'meal:2026-06-12:lunch',
+      dataHash: 'hash-2',
+      title: '清淡补蛋白',
+      summary: '午餐适合低脂蛋白配蔬菜。',
+      combo,
+      alternatives: [],
+      warnings: ['按候选估算'],
+    });
+    const cached = await getCachedMealSuggestionAdvice(db as never, 'meal:2026-06-12:lunch');
+
+    expect(saved.updatedAt).toMatch(/T/);
+    expect(runAsync.mock.calls[0][0]).toContain('ai_insight_advice');
+    expect(cached?.combo[0].name).toBe('鸡胸肉');
+    expect(cached?.warnings).toEqual(['按候选估算']);
+  });
+
   it('saves multiple meal photos in order while keeping a legacy first photo', async () => {
     const runAsync = vi
       .fn()
@@ -183,6 +229,7 @@ describe('database migration', () => {
       mealType: 'lunch',
       title: '牛肉饭套餐',
       notes: '少油',
+      photoUris: ['meal-photos/update-a.jpg', 'meal-photos/update-b.jpg'],
       items: [
         {
           id: 'item-1',
@@ -200,7 +247,19 @@ describe('database migration', () => {
     expect(runAsync.mock.calls[0][0]).toContain('UPDATE meals');
     expect(runAsync.mock.calls[0]).toContain('lunch');
     expect(runAsync.mock.calls[0]).toContain('牛肉饭套餐');
+    expect(runAsync.mock.calls[0]).toContain('meal-photos/update-a.jpg');
     expect(runAsync.mock.calls[0]).toContain('少油');
+    expect(
+      runAsync.mock.calls.some(([sql]) => String(sql).includes('DELETE FROM meal_photos')),
+    ).toBe(true);
+    expect(
+      runAsync.mock.calls.some(
+        ([sql, mealId, uri]) =>
+          String(sql).includes('INSERT INTO meal_photos') &&
+          mealId === 12 &&
+          uri === 'meal-photos/update-b.jpg',
+      ),
+    ).toBe(true);
     expect(runAsync.mock.calls.some(([sql]) => String(sql).includes('DELETE FROM meal_items'))).toBe(true);
     expect(runAsync.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO meal_items'))).toBe(true);
   });

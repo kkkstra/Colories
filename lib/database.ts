@@ -9,6 +9,7 @@ import { createLocalId } from '@/lib/security';
 import type {
   AIProviderConfig,
   DailyTargets,
+  MealSuggestionAdvice,
   FoodCategory,
   MacroValues,
   MealItemDraft,
@@ -761,24 +762,32 @@ export async function updateMeal(
     eatenAt: string;
     mealType: MealType;
     title?: string;
+    photoUri?: string;
+    photoUris?: string[];
     notes?: string;
     items: MealItemDraft[];
   },
 ): Promise<void> {
   await db.withTransactionAsync(async () => {
     const title = resolveMealTitle(input.title, input.items);
+    const photoUris = normalizeMealPhotoReferences(
+      input.photoUris?.length ? input.photoUris : input.photoUri ? [input.photoUri] : undefined,
+    );
     await db.runAsync(
       `UPDATE meals
-       SET eaten_at = ?, date_key = ?, meal_type = ?, title = ?, notes = ?, updated_at = ?
+       SET eaten_at = ?, date_key = ?, meal_type = ?, title = ?, photo_uri = ?, notes = ?, updated_at = ?
        WHERE id = ?`,
       input.eatenAt,
       toLocalDateKey(new Date(input.eatenAt)),
       input.mealType,
       title ?? null,
+      photoUris[0] ?? null,
       input.notes?.trim() || null,
       new Date().toISOString(),
       mealId,
     );
+    await db.runAsync('DELETE FROM meal_photos WHERE meal_id = ?', mealId);
+    await insertMealPhotos(db, mealId, photoUris);
     await db.runAsync('DELETE FROM meal_items WHERE meal_id = ?', mealId);
     for (const item of input.items) {
       await insertMealItem(db, mealId, item);
@@ -993,6 +1002,12 @@ export interface CachedInsightAdvice extends NutritionInsightAdvice {
   updatedAt: string;
 }
 
+export interface CachedMealSuggestionAdvice extends MealSuggestionAdvice {
+  id: string;
+  dataHash: string;
+  updatedAt: string;
+}
+
 export async function getCachedInsightAdvice(
   db: SQLiteDatabase,
   id = 'weekly',
@@ -1052,6 +1067,67 @@ export async function saveCachedInsightAdvice(
   return { ...advice, updatedAt };
 }
 
+export async function getCachedMealSuggestionAdvice(
+  db: SQLiteDatabase,
+  id: string,
+): Promise<CachedMealSuggestionAdvice | null> {
+  const row = await db.getFirstAsync<{
+    id: string;
+    data_hash: string;
+    title: string;
+    summary: string;
+    actions_json: string;
+    warnings_json: string;
+    updated_at: string;
+  }>(
+    `SELECT id, data_hash, title, summary, actions_json, warnings_json, updated_at
+     FROM ai_insight_advice
+     WHERE id = ?`,
+    id,
+  );
+  if (!row) {
+    return null;
+  }
+  const payload = parseMealSuggestionPayload(row.actions_json);
+  return {
+    id: row.id,
+    dataHash: row.data_hash,
+    title: row.title,
+    summary: row.summary,
+    combo: payload.combo,
+    alternatives: payload.alternatives,
+    warnings: parseJsonStringArray(row.warnings_json),
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function saveCachedMealSuggestionAdvice(
+  db: SQLiteDatabase,
+  advice: Omit<CachedMealSuggestionAdvice, 'updatedAt'>,
+): Promise<CachedMealSuggestionAdvice> {
+  const updatedAt = new Date().toISOString();
+  await db.runAsync(
+    `INSERT INTO ai_insight_advice
+      (id, data_hash, title, summary, actions_json, warnings_json, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+      data_hash = excluded.data_hash,
+      title = excluded.title,
+      summary = excluded.summary,
+      actions_json = excluded.actions_json,
+      warnings_json = excluded.warnings_json,
+      updated_at = excluded.updated_at`,
+    advice.id,
+    advice.dataHash,
+    advice.title,
+    advice.summary,
+    JSON.stringify({ combo: advice.combo, alternatives: advice.alternatives }),
+    JSON.stringify(advice.warnings),
+    updatedAt,
+  );
+  return { ...advice, updatedAt };
+}
+
 function normalizeForDb(value: string): string {
   return value.trim().toLowerCase().replace(/[\s（）()、，,·]/g, '');
 }
@@ -1065,4 +1141,25 @@ function parseJsonStringArray(value: string): string[] {
   } catch {
     return [];
   }
+}
+
+function parseMealSuggestionPayload(
+  value: string,
+): Pick<MealSuggestionAdvice, 'combo' | 'alternatives'> {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!isRecord(parsed)) {
+      return { combo: [], alternatives: [] };
+    }
+    return {
+      combo: Array.isArray(parsed.combo) ? parsed.combo : [],
+      alternatives: Array.isArray(parsed.alternatives) ? parsed.alternatives : [],
+    };
+  } catch {
+    return { combo: [], alternatives: [] };
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return typeof value === 'object' && value !== null;
 }

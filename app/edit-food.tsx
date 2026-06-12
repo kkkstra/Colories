@@ -7,6 +7,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { HeaderIconButton } from '@/components/ui/AppHeader';
 import { Card } from '@/components/ui/Card';
 import { ChoiceChips } from '@/components/ui/ChoiceChips';
+import { DecimalNumberInput } from '@/components/ui/DecimalNumberInput';
 import { FormField } from '@/components/ui/FormField';
 import { Screen } from '@/components/ui/Screen';
 import { theme } from '@/constants/Theme';
@@ -73,11 +74,12 @@ function draftFromFood(food: ManagedFood, copy = false): Draft {
 
 export default function EditFoodScreen() {
   const db = useSQLiteContext();
-  const { id, sourceId, name, returnTo } = useLocalSearchParams<{
+  const { id, sourceId, name, returnTo, queueTarget } = useLocalSearchParams<{
     id?: string;
     sourceId?: string;
     name?: string;
     returnTo?: string;
+    queueTarget?: string;
   }>();
   const [draft, setDraft] = useState<Draft>(() => createEmptyDraft(name));
   const [saving, setSaving] = useState(false);
@@ -104,9 +106,8 @@ export default function EditFoodScreen() {
     setDraft((current) => ({ ...current, [key]: value }));
   };
 
-  const updateNumber = (key: 'calories' | 'protein' | 'carbs' | 'fat', value: string) => {
-    const parsed = Number(value);
-    updateDraft(key, Number.isFinite(parsed) ? Math.max(0, parsed) : 0);
+  const updateNumber = (key: 'calories' | 'protein' | 'carbs' | 'fat', value: number) => {
+    updateDraft(key, Math.max(0, value));
   };
 
   const handleSave = async () => {
@@ -130,7 +131,9 @@ export default function EditFoodScreen() {
         sourceReference: draft.sourceReference?.trim() || undefined,
       });
       if (returnTo === 'select-food') {
-        router.replace('/select-food');
+        router.replace(
+          queueTarget ? { pathname: '/select-food', params: { queueTarget } } : '/select-food',
+        );
       } else {
         router.back();
       }
@@ -288,16 +291,16 @@ function NumberField({
 }: {
   label: string;
   value: number;
-  onChange: (value: string) => void;
+  onChange: (value: number) => void;
 }) {
   return (
     <View style={styles.numberField}>
-      <FormField
-        label={label}
-        value={String(value)}
-        onChangeText={onChange}
-        keyboardType="decimal-pad"
+      <Text style={styles.numberLabel}>{label}</Text>
+      <DecimalNumberInput
+        value={value}
+        onValueChange={onChange}
         selectTextOnFocus
+        style={styles.numberInput}
       />
     </View>
   );
@@ -370,5 +373,23 @@ const styles = StyleSheet.create({
   numberField: {
     width: '47%',
     flexGrow: 1,
+    gap: 7,
+  },
+  numberLabel: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  numberInput: {
+    height: 50,
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+    borderRadius: theme.radius.small,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.surfaceInset,
+    paddingHorizontal: 14,
+    color: theme.colors.text,
+    fontSize: 16,
+    boxShadow: 'inset 0 1px 0 rgba(16, 24, 40, 0.03)',
   },
 });

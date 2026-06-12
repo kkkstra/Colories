@@ -15,7 +15,7 @@ import { MealTotalSummary } from '@/components/ui/MealTotalSummary';
 import { PhotoGallery, type PhotoGalleryItem } from '@/components/ui/PhotoGallery';
 import { Screen } from '@/components/ui/Screen';
 import { theme } from '@/constants/Theme';
-import { useApp } from '@/context/AppContext';
+import { RECORD_MEAL_ITEM_TARGET, useApp } from '@/context/AppContext';
 import { AIProviderError, recognizeFoodImages } from '@/lib/ai';
 import { showAlert } from '@/lib/alert';
 import { findFoodMatch, saveCustomFood, saveMeal } from '@/lib/database';
@@ -64,10 +64,10 @@ export default function RecordScreen() {
     foodImages.length > 0 || items.length > 0 || mealTitle.trim().length > 0 || notes.trim().length > 0;
 
   useEffect(() => {
-    if (!queuedMealItem) {
+    if (!queuedMealItem || queuedMealItem.target !== RECORD_MEAL_ITEM_TARGET) {
       return;
     }
-    setItems((current) => [...current, queuedMealItem]);
+    setItems((current) => [...current, queuedMealItem.item]);
     clearQueuedMealItem();
   }, [clearQueuedMealItem, queuedMealItem]);
 

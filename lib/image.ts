@@ -21,33 +21,22 @@ export interface PreparedFoodImage {
   height: number;
 }
 
+export async function createFoodImageUploadDataUri(
+  sourceUri: string,
+  sourceWidth = 0,
+  sourceHeight = 0,
+): Promise<string> {
+  const uploadImage = await renderUploadImage(sourceUri, sourceWidth, sourceHeight);
+  cleanupTemporaryUri(uploadImage.uri, [sourceUri]);
+  return toJpegDataUri(uploadImage.base64);
+}
+
 export async function prepareFoodImage(
   sourceUri: string,
   sourceWidth: number,
   sourceHeight: number,
 ): Promise<PreparedFoodImage> {
-  const context = ImageManipulator.manipulate(sourceUri);
-  const uploadSize = fitWithin(sourceWidth, sourceHeight, MAX_UPLOAD_EDGE);
-  if (uploadSize) {
-    context.resize(uploadSize);
-  }
-  let rendered = await context.renderAsync();
-  if (!uploadSize) {
-    const measuredUploadSize = fitWithin(rendered.width, rendered.height, MAX_UPLOAD_EDGE);
-    if (measuredUploadSize) {
-      const measuredContext = ImageManipulator.manipulate(sourceUri);
-      measuredContext.resize(measuredUploadSize);
-      rendered = await measuredContext.renderAsync();
-    }
-  }
-  const uploadImage = await rendered.saveAsync({
-    base64: true,
-    compress: 0.76,
-    format: SaveFormat.JPEG,
-  });
-  if (!uploadImage.base64) {
-    throw new Error('图片编码失败，请重新选择照片。');
-  }
+  const uploadImage = await renderUploadImage(sourceUri, sourceWidth, sourceHeight);
 
   const storedContext = ImageManipulator.manipulate(sourceUri);
   const storedSize = fitWithin(sourceWidth, sourceHeight, MAX_STORED_EDGE);
@@ -78,11 +67,41 @@ export async function prepareFoodImage(
   cleanupTemporaryUri(storedImage.uri, [sourceUri, uploadImage.uri, storedUri]);
 
   return {
-    uploadDataUri: `data:image/jpeg;base64,${uploadImage.base64}`,
+    uploadDataUri: toJpegDataUri(uploadImage.base64),
     storedUri,
     width: storedImage.width,
     height: storedImage.height,
   };
+}
+
+async function renderUploadImage(
+  sourceUri: string,
+  sourceWidth: number,
+  sourceHeight: number,
+) {
+  const context = ImageManipulator.manipulate(sourceUri);
+  const uploadSize = fitWithin(sourceWidth, sourceHeight, MAX_UPLOAD_EDGE);
+  if (uploadSize) {
+    context.resize(uploadSize);
+  }
+  let rendered = await context.renderAsync();
+  if (!uploadSize) {
+    const measuredUploadSize = fitWithin(rendered.width, rendered.height, MAX_UPLOAD_EDGE);
+    if (measuredUploadSize) {
+      const measuredContext = ImageManipulator.manipulate(sourceUri);
+      measuredContext.resize(measuredUploadSize);
+      rendered = await measuredContext.renderAsync();
+    }
+  }
+  const uploadImage = await rendered.saveAsync({
+    base64: true,
+    compress: 0.76,
+    format: SaveFormat.JPEG,
+  });
+  if (!uploadImage.base64) {
+    throw new Error('图片编码失败，请重新选择照片。');
+  }
+  return uploadImage;
 }
 
 async function persistMealPhoto(uri: string): Promise<string> {

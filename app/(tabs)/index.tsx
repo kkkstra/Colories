@@ -10,10 +10,35 @@ import { MacroStrip } from '@/components/ui/MacroStrip';
 import { Screen } from '@/components/ui/Screen';
 import { theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
+import { generateMealSuggestionAdvice } from '@/lib/ai';
 import { formatChineseDate, toLocalDateKey } from '@/lib/date';
-import { getDayTotals, getMealsForDate, type DaySummary } from '@/lib/database';
+import {
+  getCachedMealSuggestionAdvice,
+  getDayTotals,
+  getManagedFoods,
+  getMealsForDate,
+  saveCachedMealSuggestionAdvice,
+  type DaySummary,
+} from '@/lib/database';
+import {
+  buildMealSuggestionData,
+  buildFallbackMealSuggestion,
+  getMealSuggestionLabel,
+  resolveMealSuggestionAdvice,
+  type MealSuggestionSource,
+} from '@/lib/mealSuggestion';
+import { inferMealSuggestionTargetFromDate } from '@/lib/mealTiming';
 import { getMealDisplayTitle } from '@/lib/mealTitle';
-import type { MealRecord, MealType } from '@/types/domain';
+import { getApiKey } from '@/lib/secureStorage';
+import type {
+  MealSuggestionAdvice,
+  MealSuggestionFood,
+  MealSuggestionScope,
+  MealSuggestionTargetType,
+  MacroValues,
+  MealRecord,
+  MealType,
+} from '@/types/domain';
 
 const MEAL_LABELS: Record<MealType, string> = {
   breakfast: '早餐',
@@ -29,24 +54,160 @@ const MEAL_ICONS: Record<MealType, keyof typeof Ionicons.glyphMap> = {
   snack: 'cafe-outline',
 };
 
+const MEAL_SUGGESTION_FOOD_QUERY_LIMIT = 1000;
+const EMPTY_TOTALS: MacroValues = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+
+const mealSuggestionInFlight = new Map<string, Promise<MealSuggestionAdvice>>();
+const failedMealSuggestionKeys = new Set<string>();
+
+interface MealSuggestionState {
+  advice: MealSuggestionAdvice;
+  source: MealSuggestionSource;
+  remaining: MacroValues;
+  targetType: MealSuggestionTargetType;
+  scope: MealSuggestionScope;
+  mealLabel: string;
+  targetDateKey: string;
+  loading: boolean;
+  message?: string;
+}
+
 export default function TodayScreen() {
   const db = useSQLiteContext();
-  const { loading, profile, targets } = useApp();
+  const { loading, profile, targets, providerConfig, hasApiKey } = useApp();
   const dateKey = toLocalDateKey();
   const [meals, setMeals] = useState<MealRecord[]>([]);
   const [totals, setTotals] = useState<DaySummary | null>(null);
   const [refreshing, setRefreshing] = useState(true);
+  const [mealSuggestion, setMealSuggestion] = useState<MealSuggestionState | null>(null);
+
+  const loadMealSuggestion = useCallback(
+    async (nextTotals: DaySummary, nextMeals: MealRecord[]) => {
+      if (!targets) {
+        setMealSuggestion(null);
+        return;
+      }
+
+      const suggestionTarget = inferMealSuggestionTargetFromDate(
+        new Date(),
+        nextMeals.map((meal) => meal.mealType),
+      );
+      const mealLabel = getMealSuggestionLabel(suggestionTarget.targetType);
+      const suggestionTotals = suggestionTarget.scope === 'full_day' ? EMPTY_TOTALS : nextTotals;
+      const foods = await getManagedFoods(db, {
+        query: '',
+        category: 'all',
+        scope: 'all',
+        limit: MEAL_SUGGESTION_FOOD_QUERY_LIMIT,
+      });
+      const suggestionData = buildMealSuggestionData({
+        dateKey: suggestionTarget.dateKey,
+        targetType: suggestionTarget.targetType,
+        scope: suggestionTarget.scope,
+        totals: suggestionTotals,
+        targets,
+        foods,
+        providerConfig,
+      });
+      const fallback = buildFallbackMealSuggestion(suggestionData);
+      const cacheId = `meal:${suggestionTarget.dateKey}:${suggestionTarget.targetType}`;
+      const cacheKey = `${cacheId}:${suggestionData.dataHash}`;
+      const cached = await getCachedMealSuggestionAdvice(db, cacheId);
+      const apiKey = providerConfig && hasApiKey ? await getApiKey() : null;
+      const canGenerate =
+        Boolean(providerConfig && apiKey) &&
+        suggestionData.hasNutritionData &&
+        suggestionData.candidates.length > 0 &&
+        !failedMealSuggestionKeys.has(cacheKey);
+
+      if (cached?.dataHash !== suggestionData.dataHash) {
+        setMealSuggestion({
+          advice: fallback,
+          source: 'fallback',
+          remaining: suggestionData.remaining,
+          targetType: suggestionTarget.targetType,
+          scope: suggestionTarget.scope,
+          mealLabel,
+          targetDateKey: suggestionTarget.dateKey,
+          loading: canGenerate,
+          message: canGenerate ? buildMealSuggestionLoadingMessage(suggestionTarget.scope, mealLabel) : undefined,
+        });
+      }
+
+      const resolution = await resolveMealSuggestionAdvice({
+        dataHash: suggestionData.dataHash,
+        cached,
+        fallback,
+        canGenerate,
+        generate: async () => {
+          const current = mealSuggestionInFlight.get(cacheKey);
+          if (current) {
+            return current;
+          }
+          const request = generateMealSuggestionAdvice(providerConfig!, apiKey!, {
+            dateKey: suggestionTarget.dateKey,
+            targetType: suggestionTarget.targetType,
+            scope: suggestionTarget.scope,
+            mealLabel,
+            totals: suggestionTotals,
+            targets,
+            remaining: suggestionData.remaining,
+            candidates: suggestionData.candidates,
+          })
+            .then((advice) => {
+              failedMealSuggestionKeys.delete(cacheKey);
+              return advice;
+            })
+            .catch((error) => {
+              failedMealSuggestionKeys.add(cacheKey);
+              throw error;
+            })
+            .finally(() => {
+              mealSuggestionInFlight.delete(cacheKey);
+            });
+          mealSuggestionInFlight.set(cacheKey, request);
+          return request;
+        },
+        save: async (advice) => {
+          const saved = await saveCachedMealSuggestionAdvice(db, {
+            id: cacheId,
+            dataHash: suggestionData.dataHash,
+            ...advice,
+          });
+          return saved;
+        },
+      });
+
+      setMealSuggestion({
+        advice: resolution.advice,
+        source: resolution.source === 'cache' ? 'ai' : resolution.source,
+        remaining: suggestionData.remaining,
+        targetType: suggestionTarget.targetType,
+        scope: suggestionTarget.scope,
+        mealLabel,
+        targetDateKey: suggestionTarget.dateKey,
+        loading: false,
+        message: suggestionData.hasNutritionData ? resolution.message : undefined,
+      });
+    },
+    [dateKey, db, hasApiKey, providerConfig, targets],
+  );
 
   const load = useCallback(async () => {
     setRefreshing(true);
-    const [nextMeals, nextTotals] = await Promise.all([
-      getMealsForDate(db, dateKey),
-      getDayTotals(db, dateKey),
-    ]);
-    setMeals(nextMeals);
-    setTotals(nextTotals);
-    setRefreshing(false);
-  }, [dateKey, db]);
+    try {
+      const [nextMeals, nextTotals] = await Promise.all([
+        getMealsForDate(db, dateKey),
+        getDayTotals(db, dateKey),
+      ]);
+      setMeals(nextMeals);
+      setTotals(nextTotals);
+      setRefreshing(false);
+      await loadMealSuggestion(nextTotals, nextMeals);
+    } catch {
+      setRefreshing(false);
+    }
+  }, [dateKey, db, loadMealSuggestion]);
 
   useFocusEffect(
     useCallback(() => {
@@ -134,6 +295,8 @@ export default function TodayScreen() {
         </View>
       </View>
 
+      {mealSuggestion ? <MealSuggestionCard state={mealSuggestion} /> : null}
+
       <View style={styles.sectionHeader}>
         <View style={styles.sectionTitleRow}>
           <Text style={styles.sectionTitle}>今日餐食</Text>
@@ -196,6 +359,148 @@ export default function TodayScreen() {
       )}
     </Screen>
   );
+}
+
+function MealSuggestionCard({ state }: { state: MealSuggestionState }) {
+  const statusLabel = state.loading
+    ? '正在生成'
+    : state.source === 'ai'
+      ? 'AI 生成'
+      : '本地兜底';
+  const statusTone = state.loading ? 'loading' : state.source === 'ai' ? 'ai' : 'fallback';
+  const warnings = [
+    ...(state.message ? [state.message] : []),
+    ...state.advice.warnings,
+  ].slice(0, 2);
+
+  return (
+    <Card variant="base" style={styles.dinnerCard}>
+      <View style={styles.dinnerTop}>
+        <View style={styles.dinnerHeading}>
+          <View style={styles.dinnerIcon}>
+            <Ionicons name="sparkles-outline" size={17} color={theme.colors.primary} />
+          </View>
+          <View style={styles.dinnerTitleGroup}>
+            <Text style={styles.dinnerEyebrow}>
+              {state.scope === 'full_day' ? `${state.mealLabel}助手` : `${state.mealLabel}额度助手`}
+            </Text>
+            <Text style={styles.dinnerTitle}>{state.advice.title}</Text>
+          </View>
+        </View>
+        <View
+          style={[
+            styles.dinnerStatus,
+            statusTone === 'ai' && styles.dinnerStatusAi,
+            statusTone === 'fallback' && styles.dinnerStatusFallback,
+          ]}
+        >
+          {state.loading ? (
+            <ActivityIndicator color={theme.colors.primary} size="small" />
+          ) : null}
+          <Text
+            style={[
+              styles.dinnerStatusText,
+              statusTone === 'fallback' && styles.dinnerStatusTextFallback,
+            ]}
+          >
+            {statusLabel}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.remainingGrid}>
+        <RemainingPill label="热量" value={state.remaining.calories} unit="kcal" />
+        <RemainingPill label="蛋白" value={state.remaining.protein} unit="g" />
+        <RemainingPill label="碳水" value={state.remaining.carbs} unit="g" />
+        <RemainingPill label="脂肪" value={state.remaining.fat} unit="g" />
+      </View>
+
+      <Text style={styles.dinnerSummary}>{state.advice.summary}</Text>
+
+      <View style={styles.comboList}>
+        {state.advice.combo.map((food, index) => (
+          <MealFoodRow key={`${food.foodId ?? food.name}-${index}`} food={food} index={index} />
+        ))}
+      </View>
+
+      {state.advice.alternatives.length > 0 ? (
+        <View style={styles.alternativeWrap}>
+          <Text style={styles.alternativeLabel}>可替换</Text>
+          <View style={styles.alternativeList}>
+            {state.advice.alternatives.map((food, index) => (
+              <View key={`${food.foodId ?? food.name}-${index}`} style={styles.alternativePill}>
+                <Text style={styles.alternativeName} numberOfLines={1}>{food.name}</Text>
+                <Text style={styles.alternativeMeta}>{formatServing(food)}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {warnings.map((warning) => (
+        <View key={warning} style={styles.dinnerWarning}>
+          <Ionicons name="alert-circle" size={14} color={theme.colors.warning} />
+          <Text style={styles.dinnerWarningText}>{warning}</Text>
+        </View>
+      ))}
+
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => router.push('/(tabs)/record')}
+        style={({ pressed }) => [styles.recordDinnerButton, pressed && styles.pressed]}
+      >
+        <Ionicons name="add-circle" size={19} color="#FFFFFF" />
+        <Text style={styles.recordDinnerText}>
+          {state.scope === 'full_day' ? '记录下一餐' : `记录${state.mealLabel}`}
+        </Text>
+      </Pressable>
+    </Card>
+  );
+}
+
+function buildMealSuggestionLoadingMessage(scope: MealSuggestionScope, mealLabel: string): string {
+  return scope === 'full_day'
+    ? '正在让 AI 规划明日整天。'
+    : `正在让 AI 按剩余额度配${mealLabel}。`;
+}
+
+function RemainingPill({ label, value, unit }: { label: string; value: number; unit: string }) {
+  const over = value < 0;
+  return (
+    <View style={[styles.remainingPill, over && styles.remainingPillOver]}>
+      <Text style={[styles.remainingLabel, over && styles.remainingLabelOver]}>{label}</Text>
+      <Text style={[styles.remainingValue, over && styles.remainingValueOver]} numberOfLines={1}>
+        {over ? `超${Math.abs(Math.round(value))}` : Math.round(value)}
+      </Text>
+      <Text style={[styles.remainingUnit, over && styles.remainingUnitOver]}>{unit}</Text>
+    </View>
+  );
+}
+
+function MealFoodRow({ food, index }: { food: MealSuggestionFood; index: number }) {
+  return (
+    <View style={styles.comboRow}>
+      <View style={styles.comboIndex}>
+        <Text style={styles.comboIndexText}>{index + 1}</Text>
+      </View>
+      <View style={styles.comboCopy}>
+        <Text style={styles.comboName} numberOfLines={1}>{food.name}</Text>
+        <Text style={styles.comboReason} numberOfLines={2}>
+          {[formatServing(food), food.reason].filter(Boolean).join(' · ')}
+        </Text>
+      </View>
+      {food.calories > 0 ? (
+        <View style={styles.comboCalories}>
+          <Text style={styles.comboCaloriesValue}>{Math.round(food.calories)}</Text>
+          <Text style={styles.comboCaloriesUnit}>kcal</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function formatServing(food: MealSuggestionFood): string {
+  return food.servingGrams ? `${Math.round(food.servingGrams)}g` : '';
 }
 
 function MacroTile({
@@ -497,6 +802,261 @@ const styles = StyleSheet.create({
   macroFill: {
     height: '100%',
     borderRadius: 2,
+  },
+  dinnerCard: {
+    gap: 13,
+    borderColor: '#FFFFFF',
+    overflow: 'hidden',
+  },
+  dinnerTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  dinnerHeading: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  dinnerIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dinnerTitleGroup: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  dinnerEyebrow: {
+    color: theme.colors.primary,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  dinnerTitle: {
+    color: theme.colors.text,
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: '900',
+  },
+  dinnerStatus: {
+    minHeight: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 15,
+    paddingHorizontal: 10,
+    backgroundColor: theme.colors.primaryWash,
+    borderWidth: 1,
+    borderColor: 'rgba(39, 93, 255, 0.12)',
+  },
+  dinnerStatusAi: {
+    backgroundColor: theme.colors.successSoft,
+    borderColor: 'rgba(24, 134, 91, 0.16)',
+  },
+  dinnerStatusFallback: {
+    backgroundColor: theme.colors.warningSoft,
+    borderColor: 'rgba(161, 92, 0, 0.15)',
+  },
+  dinnerStatusText: {
+    color: theme.colors.primary,
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  dinnerStatusTextFallback: {
+    color: theme.colors.warning,
+  },
+  remainingGrid: {
+    flexDirection: 'row',
+    gap: 7,
+  },
+  remainingPill: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 58,
+    borderRadius: 12,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+    backgroundColor: theme.colors.surfaceInset,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    justifyContent: 'center',
+    gap: 2,
+  },
+  remainingPillOver: {
+    backgroundColor: theme.colors.accentWash,
+    borderColor: 'rgba(255, 90, 61, 0.18)',
+  },
+  remainingLabel: {
+    color: theme.colors.textMuted,
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  remainingLabelOver: {
+    color: theme.colors.accent,
+  },
+  remainingValue: {
+    color: theme.colors.text,
+    fontSize: 17,
+    lineHeight: 19,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+  remainingValueOver: {
+    color: theme.colors.accent,
+    fontSize: 15,
+  },
+  remainingUnit: {
+    color: theme.colors.textFaint,
+    fontSize: 8,
+    fontWeight: '900',
+  },
+  remainingUnitOver: {
+    color: theme.colors.accent,
+  },
+  dinnerSummary: {
+    color: theme.colors.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '700',
+  },
+  comboList: {
+    gap: 8,
+  },
+  comboRow: {
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.borderSoft,
+    paddingTop: 8,
+  },
+  comboIndex: {
+    width: 26,
+    height: 26,
+    borderRadius: 9,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.surfaceTint,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  comboIndexText: {
+    color: theme.colors.primary,
+    fontSize: 11,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+  comboCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  comboName: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  comboReason: {
+    color: theme.colors.textMuted,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '700',
+  },
+  comboCalories: {
+    alignItems: 'flex-end',
+    minWidth: 46,
+  },
+  comboCaloriesValue: {
+    color: theme.colors.text,
+    fontSize: 17,
+    lineHeight: 19,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+  comboCaloriesUnit: {
+    color: theme.colors.textFaint,
+    fontSize: 8,
+    fontWeight: '800',
+  },
+  alternativeWrap: {
+    gap: 8,
+  },
+  alternativeLabel: {
+    color: theme.colors.textMuted,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  alternativeList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  alternativePill: {
+    maxWidth: '100%',
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 12,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+    backgroundColor: theme.colors.surfaceInset,
+    paddingHorizontal: 10,
+  },
+  alternativeName: {
+    maxWidth: 180,
+    color: theme.colors.text,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  alternativeMeta: {
+    color: theme.colors.textMuted,
+    fontSize: 10,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
+  dinnerWarning: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    borderRadius: 12,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.warningSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  dinnerWarningText: {
+    flex: 1,
+    color: theme.colors.warning,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '800',
+  },
+  recordDinnerButton: {
+    minHeight: 44,
+    borderRadius: 14,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    boxShadow: theme.shadows.primary,
+  },
+  recordDinnerText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
   },
   sectionHeader: {
     flexDirection: 'row',

@@ -2,6 +2,9 @@ export type BiologicalSex = 'male' | 'female';
 export type FitnessGoal = 'cut' | 'maintain' | 'gain';
 export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active';
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+export type MainMealType = Exclude<MealType, 'snack'>;
+export type MealSuggestionScope = 'meal' | 'full_day';
+export type MealSuggestionTargetType = MainMealType | 'full_day';
 export type NutritionSource = 'catalog' | 'ai' | 'manual';
 export type AIResponseMode = 'json_schema' | 'json_object' | 'prompt_json';
 export type FoodCategory =
@@ -131,4 +134,28 @@ export interface NutritionInsightAdvice {
   summary: string;
   actions: string[];
   warnings: string[];
+}
+
+export interface MealSuggestionFood extends MacroValues {
+  foodId?: string;
+  name: string;
+  category?: FoodCategory;
+  servingGrams?: number;
+  reason?: string;
+}
+
+export interface MealSuggestionAdvice {
+  title: string;
+  summary: string;
+  combo: MealSuggestionFood[];
+  alternatives: MealSuggestionFood[];
+  warnings: string[];
+}
+
+export interface MealSuggestionCandidate extends MacroValues {
+  id: string;
+  name: string;
+  category: FoodCategory;
+  servingGrams: number;
+  isCustom?: boolean;
 }
