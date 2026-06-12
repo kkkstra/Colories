@@ -36,7 +36,10 @@ import {
   REMINDER_MEAL_LABELS,
   REMINDER_MEAL_TYPES,
 } from '@/lib/reminderSettings';
-import type { ReminderPermissionStatus } from '@/lib/reminders';
+import {
+  scheduleMealReminderTestNotification,
+  type ReminderPermissionStatus,
+} from '@/lib/reminders';
 import { clearApiKey, getApiKey } from '@/lib/secureStorage';
 import { syncTodayNutritionWidget } from '@/lib/widgetSync';
 import type { DailyTargets, MainMealType, ReminderSettings, UserProfile } from '@/types/domain';
@@ -113,6 +116,7 @@ export default function SettingsScreen() {
   const [savingTargets, setSavingTargets] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingReminders, setSavingReminders] = useState(false);
+  const [testingReminder, setTestingReminder] = useState(false);
   const [transferBusy, setTransferBusy] = useState<TransferBusy>(null);
   const [importMode, setImportMode] = useState<ImportMode>('replace');
   const [expandedSection, setExpandedSection] = useState<ExpandedSection>(
@@ -321,6 +325,25 @@ export default function SettingsScreen() {
       showAlert('保存提醒失败', getErrorMessage(error));
     } finally {
       setSavingReminders(false);
+    }
+  };
+
+  const handleTestReminder = async () => {
+    setTestingReminder(true);
+    try {
+      const permissionStatus = await scheduleMealReminderTestNotification();
+      if (permissionStatus === 'granted') {
+        showAlert('测试提醒已安排', '1 分钟后会发送一条本地通知。');
+      } else if (permissionStatus === 'unsupported') {
+        showAlert('当前平台不支持', '请在 iOS 或 Android 上测试本地通知。');
+      } else {
+        showAlert('无法发送测试提醒', '系统通知权限未开启，允许通知后再试。');
+      }
+      await refresh();
+    } catch (error) {
+      showAlert('测试提醒失败', getErrorMessage(error));
+    } finally {
+      setTestingReminder(false);
     }
   };
 
@@ -696,12 +719,27 @@ export default function SettingsScreen() {
               })}
             </View>
 
-            <AppButton
-              label="保存提醒"
-              icon="checkmark"
-              onPress={handleSaveReminders}
-              loading={savingReminders}
-            />
+            <View style={styles.reminderActions}>
+              <View style={styles.reminderActionButton}>
+                <AppButton
+                  label="1分钟后测试"
+                  icon="alarm-outline"
+                  variant="secondary"
+                  onPress={handleTestReminder}
+                  loading={testingReminder}
+                  disabled={savingReminders}
+                />
+              </View>
+              <View style={styles.reminderActionButton}>
+                <AppButton
+                  label="保存提醒"
+                  icon="checkmark"
+                  onPress={handleSaveReminders}
+                  loading={savingReminders}
+                  disabled={testingReminder}
+                />
+              </View>
+            </View>
           </View>
         ) : null}
       </Card>
@@ -1412,6 +1450,14 @@ const styles = StyleSheet.create({
   },
   disabledRow: {
     opacity: 0.72,
+  },
+  reminderActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  reminderActionButton: {
+    flex: 1,
+    minWidth: 0,
   },
   targetMetric: {
     flex: 1,

@@ -19,8 +19,10 @@ vi.mock('react-native', () => ({
 
 vi.mock('expo-router', () => ({
   router: {
+    navigate: vi.fn(),
     push: vi.fn(),
   },
+  useRootNavigationState: vi.fn(() => ({ key: 'root' })),
 }));
 
 vi.mock('expo-notifications', () => ({
@@ -43,8 +45,10 @@ vi.mock('expo-notifications', () => ({
   },
   SchedulableTriggerInputTypes: {
     DAILY: 'daily',
+    TIME_INTERVAL: 'timeInterval',
   },
   addNotificationResponseReceivedListener: vi.fn(() => ({ remove: vi.fn() })),
+  clearLastNotificationResponse: vi.fn(),
   getLastNotificationResponse: vi.fn(() => null),
   ...mockNotifications,
 }));
@@ -52,7 +56,9 @@ vi.mock('expo-notifications', () => ({
 import {
   MEAL_REMINDER_CHANNEL_ID,
   MEAL_REMINDER_NOTIFICATION_IDS,
+  TEST_MEAL_REMINDER_NOTIFICATION_ID,
   buildMealReminderNotificationRequests,
+  scheduleMealReminderTestNotification,
   syncMealReminderNotifications,
 } from '@/lib/reminders';
 import { cloneReminderSettings, DEFAULT_REMINDER_SETTINGS } from '@/lib/reminderSettings';
@@ -139,5 +145,24 @@ describe('meal reminders', () => {
 
     expect(mockNotifications.cancelScheduledNotificationAsync).toHaveBeenCalledTimes(3);
     expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('schedules a one-minute test reminder after permission is granted', async () => {
+    const permissionStatus = await scheduleMealReminderTestNotification();
+
+    expect(permissionStatus).toBe('granted');
+    expect(mockNotifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith(
+      TEST_MEAL_REMINDER_NOTIFICATION_ID,
+    );
+    expect(mockNotifications.scheduleNotificationAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identifier: TEST_MEAL_REMINDER_NOTIFICATION_ID,
+        trigger: expect.objectContaining({
+          type: 'timeInterval',
+          seconds: 60,
+          channelId: MEAL_REMINDER_CHANNEL_ID,
+        }),
+      }),
+    );
   });
 });

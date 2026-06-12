@@ -1,6 +1,6 @@
 import * as Notifications from 'expo-notifications';
-import { router } from 'expo-router';
-import { useEffect } from 'react';
+import { router, useRootNavigationState } from 'expo-router';
+import { useCallback, useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 
 import {
@@ -13,7 +13,9 @@ import type { MainMealType, ReminderSettings } from '@/types/domain';
 export type ReminderPermissionStatus = 'unsupported' | 'granted' | 'denied' | 'undetermined';
 
 export const MEAL_REMINDER_CHANNEL_ID = 'meal-reminders';
-export const MEAL_REMINDER_URL = '/(tabs)/record';
+export const MEAL_REMINDER_URL = '/record';
+export const MEAL_REMINDER_ROUTE = '/(tabs)/record';
+export const TEST_MEAL_REMINDER_NOTIFICATION_ID = 'meal-reminder-test';
 
 export const MEAL_REMINDER_NOTIFICATION_IDS: Record<MainMealType, string> = {
   breakfast: 'meal-reminder-breakfast',
@@ -36,17 +38,31 @@ export function configureMealReminderNotificationHandler(): void {
 }
 
 export function useMealReminderNotificationObserver(): void {
+  const rootNavigationState = useRootNavigationState();
+  const pendingNotificationRef = useRef<Notifications.Notification | null>(null);
+  const navigationReady = Boolean(rootNavigationState?.key);
+
+  const redirect = useCallback(
+    (notification: Notifications.Notification) => {
+      const url = notification.request.content.data?.url;
+      if (typeof url !== 'string') {
+        return;
+      }
+      if (!navigationReady) {
+        pendingNotificationRef.current = notification;
+        return;
+      }
+      pendingNotificationRef.current = null;
+      router.navigate(MEAL_REMINDER_ROUTE as never);
+      Notifications.clearLastNotificationResponse();
+    },
+    [navigationReady],
+  );
+
   useEffect(() => {
     if (Platform.OS === 'web') {
       return;
     }
-
-    const redirect = (notification: Notifications.Notification) => {
-      const url = notification.request.content.data?.url;
-      if (typeof url === 'string') {
-        router.push(url as never);
-      }
-    };
 
     const response = Notifications.getLastNotificationResponse();
     if (response?.notification) {
@@ -60,7 +76,14 @@ export function useMealReminderNotificationObserver(): void {
     return () => {
       subscription.remove();
     };
-  }, []);
+  }, [redirect]);
+
+  useEffect(() => {
+    if (Platform.OS === 'web' || !navigationReady || !pendingNotificationRef.current) {
+      return;
+    }
+    redirect(pendingNotificationRef.current);
+  }, [navigationReady, redirect]);
 }
 
 export async function getReminderPermissionStatusAsync(): Promise<ReminderPermissionStatus> {
@@ -111,6 +134,39 @@ export async function syncMealReminderNotifications(
   for (const request of buildMealReminderNotificationRequests(settings)) {
     await Notifications.scheduleNotificationAsync(request);
   }
+}
+
+export async function scheduleMealReminderTestNotification(): Promise<ReminderPermissionStatus> {
+  if (Platform.OS === 'web') {
+    return 'unsupported';
+  }
+
+  const permissionStatus = await requestReminderPermissionsAsync();
+  if (permissionStatus !== 'granted') {
+    return permissionStatus;
+  }
+
+  await Notifications.cancelScheduledNotificationAsync(TEST_MEAL_REMINDER_NOTIFICATION_ID);
+  await Notifications.scheduleNotificationAsync({
+    identifier: TEST_MEAL_REMINDER_NOTIFICATION_ID,
+    content: {
+      title: '燃卡测试提醒',
+      body: '这是一条 1 分钟后的测试通知。',
+      sound: 'default',
+      priority: Notifications.AndroidNotificationPriority.HIGH,
+      data: {
+        kind: 'meal-reminder-test',
+        url: MEAL_REMINDER_URL,
+      },
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: 60,
+      channelId: MEAL_REMINDER_CHANNEL_ID,
+    },
+  });
+
+  return permissionStatus;
 }
 
 export async function cancelMealReminderNotificationsAsync(): Promise<void> {
