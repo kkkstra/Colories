@@ -1,10 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Redirect, router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
-import { Card } from '@/components/ui/Card';
 import { ChoiceChips } from '@/components/ui/ChoiceChips';
 import { FormField } from '@/components/ui/FormField';
 import { Screen } from '@/components/ui/Screen';
@@ -14,8 +13,88 @@ import { showAlert } from '@/lib/alert';
 import { calculateTargets } from '@/lib/nutrition';
 import type { ActivityLevel, BiologicalSex, FitnessGoal, UserProfile } from '@/types/domain';
 
+type OnboardingStepId = 'age' | 'height' | 'weight' | 'sex' | 'activity' | 'goal' | 'review';
+
+const STEPS: {
+  id: OnboardingStepId;
+  label: string;
+  title: string;
+  helper: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}[] = [
+  {
+    id: 'age',
+    label: '年龄',
+    title: '先告诉我你的年龄',
+    helper: '用于估算基础代谢，之后可以在设置里修改。',
+    icon: 'calendar-clear-outline',
+  },
+  {
+    id: 'height',
+    label: '身高',
+    title: '你的身高是多少',
+    helper: '身高会参与每日热量和宏量营养目标计算。',
+    icon: 'resize-outline',
+  },
+  {
+    id: 'weight',
+    label: '体重',
+    title: '现在的体重是多少',
+    helper: '蛋白质和脂肪目标会根据体重给出初始建议。',
+    icon: 'barbell-outline',
+  },
+  {
+    id: 'sex',
+    label: '性别',
+    title: '选择用于估算的生理性别',
+    helper: '这里只用于营养目标估算，不会上传。',
+    icon: 'body-outline',
+  },
+  {
+    id: 'activity',
+    label: '活动',
+    title: '平时活动量接近哪一种',
+    helper: '选最接近日常节奏的选项，不需要精确到每一天。',
+    icon: 'walk-outline',
+  },
+  {
+    id: 'goal',
+    label: '目标',
+    title: '这阶段想怎么调整',
+    helper: '燃卡会先给一个目标，你随时可以在设置页改。',
+    icon: 'flag-outline',
+  },
+  {
+    id: 'review',
+    label: '确认',
+    title: '这是你的起始目标',
+    helper: '目标为日常估算值，适合记录和调整，不用于医疗建议。',
+    icon: 'sparkles-outline',
+  },
+];
+
+const SEX_OPTIONS = [
+  { label: '男性', value: 'male', icon: 'male' },
+  { label: '女性', value: 'female', icon: 'female' },
+] as const;
+
+const ACTIVITY_OPTIONS = [
+  { label: '久坐', value: 'sedentary', icon: 'desktop-outline' },
+  { label: '轻度', value: 'light', icon: 'walk-outline' },
+  { label: '常规', value: 'moderate', icon: 'barbell-outline' },
+  { label: '高强度', value: 'active', icon: 'flame-outline' },
+  { label: '运动员', value: 'very_active', icon: 'trophy-outline' },
+] as const;
+
+const GOAL_OPTIONS = [
+  { label: '减脂', value: 'cut', icon: 'trending-down' },
+  { label: '维持', value: 'maintain', icon: 'remove' },
+  { label: '增肌', value: 'gain', icon: 'trending-up' },
+] as const;
+
 export default function OnboardingScreen() {
   const { loading, profile, persistProfile } = useApp();
+  const [stepIndex, setStepIndex] = useState(0);
   const [age, setAge] = useState('28');
   const [height, setHeight] = useState('175');
   const [weight, setWeight] = useState('70');
@@ -36,21 +115,34 @@ export default function OnboardingScreen() {
     [activityLevel, age, goal, height, sex, weight],
   );
   const targets = calculateTargets(draft);
+  const step = STEPS[stepIndex];
+  const isLastStep = stepIndex === STEPS.length - 1;
 
   if (!loading && profile) {
     return <Redirect href="/" />;
   }
 
+  const handleNext = () => {
+    const validationMessage = validateStep(step.id, draft);
+    if (validationMessage) {
+      showAlert('请检查信息', validationMessage);
+      return;
+    }
+    if (isLastStep) {
+      void handleSave();
+      return;
+    }
+    setStepIndex((current) => Math.min(current + 1, STEPS.length - 1));
+  };
+
+  const handleBack = () => {
+    setStepIndex((current) => Math.max(current - 1, 0));
+  };
+
   const handleSave = async () => {
-    if (
-      draft.age < 14 ||
-      draft.age > 100 ||
-      draft.heightCm < 120 ||
-      draft.heightCm > 230 ||
-      draft.weightKg < 30 ||
-      draft.weightKg > 300
-    ) {
-      showAlert('请检查身体信息', '年龄、身高或体重超出合理范围。');
+    const validationMessage = validateProfile(draft);
+    if (validationMessage) {
+      showAlert('请检查信息', validationMessage);
       return;
     }
     setSaving(true);
@@ -65,111 +157,181 @@ export default function OnboardingScreen() {
   };
 
   return (
-    <Screen>
-      <View style={styles.hero}>
-        <View style={styles.heroIcon}>
-          <Ionicons name="flash" size={28} color="#FFFFFF" />
+    <Screen contentContainerStyle={styles.screenContent}>
+      <View style={styles.header}>
+        <View style={styles.brandMark}>
+          <Ionicons name="flash" size={22} color="#FFFFFF" />
         </View>
-        <View style={styles.heroBars}>
-          {[18, 30, 42, 55, 68].map((height, index) => (
-            <View key={height} style={[styles.heroBar, { height, opacity: 0.35 + index * 0.14 }]} />
-          ))}
+        <View style={styles.brandCopy}>
+          <Text style={styles.brandName}>燃卡</Text>
+          <Text style={styles.brandMeta}>设置你的第一组目标</Text>
         </View>
-        <Text style={styles.title}>先设定目标</Text>
-        <Text style={styles.subtitle}>身体数据只保存在本机</Text>
+        <View style={styles.stepBadge}>
+          <Text style={styles.stepBadgeText}>
+            {stepIndex + 1}/{STEPS.length}
+          </Text>
+        </View>
       </View>
 
-      <Card variant="base" style={styles.sectionCard}>
-        <SectionTitle icon="body-outline" title="身体" />
-        <View style={styles.row}>
-          <View style={styles.flex}>
-            <FormField
-              label="年龄"
-              value={age}
-              onChangeText={setAge}
-              keyboardType="number-pad"
-            />
+      <View style={styles.progressTrack}>
+        {STEPS.map((item, index) => (
+          <View
+            key={item.id}
+            style={[
+              styles.progressSegment,
+              index <= stepIndex && styles.progressSegmentActive,
+            ]}
+          />
+        ))}
+      </View>
+
+      <View style={styles.stepPanel}>
+        <View style={styles.stepTopRow}>
+          <View style={styles.stepIcon}>
+            <Ionicons name={step.icon} size={23} color={theme.colors.primary} />
           </View>
-          <View style={styles.flex}>
-            <FormField
-              label="身高 cm"
-              value={height}
-              onChangeText={setHeight}
-              keyboardType="decimal-pad"
-            />
-          </View>
-          <View style={styles.flex}>
-            <FormField
-              label="体重 kg"
-              value={weight}
-              onChangeText={setWeight}
-              keyboardType="decimal-pad"
-            />
-          </View>
+          <Text style={styles.stepLabel}>{step.label}</Text>
         </View>
-        <ChoiceChips
-          value={sex}
-          onChange={setSex}
-          options={[
-            { label: '男性', value: 'male', icon: 'male' },
-            { label: '女性', value: 'female', icon: 'female' },
-          ]}
-        />
-      </Card>
+        <Text style={styles.title}>{step.title}</Text>
+        <Text style={styles.helper}>{step.helper}</Text>
 
-      <Card variant="base" style={styles.sectionCard}>
-        <SectionTitle icon="walk-outline" title="活动" />
-        <ChoiceChips
-          value={activityLevel}
-          onChange={setActivityLevel}
-          options={[
-            { label: '久坐', value: 'sedentary', icon: 'desktop-outline' },
-            { label: '轻度', value: 'light', icon: 'walk-outline' },
-            { label: '常规', value: 'moderate', icon: 'barbell-outline' },
-            { label: '高强度', value: 'active', icon: 'flame-outline' },
-            { label: '运动员', value: 'very_active', icon: 'trophy-outline' },
-          ]}
-        />
-      </Card>
+        <View style={styles.stepBody}>{renderStepContent(step.id, {
+          age,
+          setAge,
+          height,
+          setHeight,
+          weight,
+          setWeight,
+          sex,
+          setSex,
+          activityLevel,
+          setActivityLevel,
+          goal,
+          setGoal,
+          targets,
+        })}</View>
+      </View>
 
-      <Card variant="base" style={styles.sectionCard}>
-        <SectionTitle icon="flag-outline" title="目标" />
-        <ChoiceChips
-          value={goal}
-          onChange={setGoal}
-          options={[
-            { label: '减脂', value: 'cut', icon: 'trending-down' },
-            { label: '维持', value: 'maintain', icon: 'remove' },
-            { label: '增肌', value: 'gain', icon: 'trending-up' },
+      <View style={styles.footer}>
+        <Pressable
+          accessibilityRole="button"
+          disabled={stepIndex === 0 || saving}
+          onPress={handleBack}
+          style={({ pressed }) => [
+            styles.backButton,
+            stepIndex === 0 && styles.backButtonDisabled,
+            pressed && styles.pressed,
           ]}
-        />
-        <View style={styles.targetGrid}>
-          <Target label="热" value={targets.calories} color={theme.colors.primary} />
-          <Target label="蛋" value={targets.protein} color={theme.colors.protein} />
-          <Target label="碳" value={targets.carbs} color={theme.colors.carbs} />
-          <Target label="脂" value={targets.fat} color={theme.colors.fat} />
+        >
+          <Ionicons name="chevron-back" size={18} color={theme.colors.primary} />
+          <Text style={styles.backButtonText}>上一步</Text>
+        </Pressable>
+        <View style={styles.nextButton}>
+          <AppButton
+            label={isLastStep ? '开始记录' : '下一步'}
+            icon={isLastStep ? 'checkmark' : 'arrow-forward'}
+            onPress={handleNext}
+            loading={saving}
+          />
         </View>
-        <Text style={styles.disclaimer}>目标为日常估算值，可稍后调整。</Text>
-      </Card>
-
-      <AppButton label="开始记录" icon="arrow-forward" onPress={handleSave} loading={saving} />
+      </View>
     </Screen>
   );
 }
 
-function SectionTitle({
-  icon,
-  title,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-}) {
+function renderStepContent(
+  step: OnboardingStepId,
+  props: {
+    age: string;
+    setAge: (value: string) => void;
+    height: string;
+    setHeight: (value: string) => void;
+    weight: string;
+    setWeight: (value: string) => void;
+    sex: BiologicalSex;
+    setSex: (value: BiologicalSex) => void;
+    activityLevel: ActivityLevel;
+    setActivityLevel: (value: ActivityLevel) => void;
+    goal: FitnessGoal;
+    setGoal: (value: FitnessGoal) => void;
+    targets: ReturnType<typeof calculateTargets>;
+  },
+) {
+  if (step === 'age') {
+    return (
+      <FormField
+        label="年龄"
+        value={props.age}
+        onChangeText={props.setAge}
+        keyboardType="number-pad"
+        selectTextOnFocus
+        style={styles.focusInput}
+      />
+    );
+  }
+  if (step === 'height') {
+    return (
+      <FormField
+        label="身高 cm"
+        value={props.height}
+        onChangeText={props.setHeight}
+        keyboardType="decimal-pad"
+        selectTextOnFocus
+        style={styles.focusInput}
+      />
+    );
+  }
+  if (step === 'weight') {
+    return (
+      <FormField
+        label="体重 kg"
+        value={props.weight}
+        onChangeText={props.setWeight}
+        keyboardType="decimal-pad"
+        selectTextOnFocus
+        style={styles.focusInput}
+      />
+    );
+  }
+  if (step === 'sex') {
+    return (
+      <ChoiceChips
+        value={props.sex}
+        onChange={props.setSex}
+        options={SEX_OPTIONS}
+        adaptive
+        columns={2}
+      />
+    );
+  }
+  if (step === 'activity') {
+    return (
+      <ChoiceChips
+        value={props.activityLevel}
+        onChange={props.setActivityLevel}
+        options={ACTIVITY_OPTIONS}
+        adaptive
+        minColumnWidth={104}
+      />
+    );
+  }
+  if (step === 'goal') {
+    return (
+      <ChoiceChips
+        value={props.goal}
+        onChange={props.setGoal}
+        options={GOAL_OPTIONS}
+        adaptive
+        columns={3}
+      />
+    );
+  }
   return (
-    <View style={styles.sectionHeading}>
-      <View style={styles.sectionIcon}>
-        <Ionicons name={icon} size={20} color={theme.colors.primary} />
-      </View>
-      <Text style={styles.sectionTitle}>{title}</Text>
+    <View style={styles.targetGrid}>
+      <Target label="热" value={props.targets.calories} color={theme.colors.primary} />
+      <Target label="蛋" value={props.targets.protein} color={theme.colors.protein} />
+      <Target label="碳" value={props.targets.carbs} color={theme.colors.carbs} />
+      <Target label="脂" value={props.targets.fat} color={theme.colors.fat} />
     </View>
   );
 }
@@ -179,72 +341,122 @@ function Target({ label, value, color }: { label: string; value: number; color: 
     <View style={styles.target}>
       <View style={[styles.targetDot, { backgroundColor: color }]} />
       <Text style={styles.targetLabel}>{label}</Text>
-      <Text style={styles.targetValue}>{value}</Text>
+      <Text style={styles.targetValue}>{Math.round(value)}</Text>
     </View>
   );
 }
 
+function validateStep(step: OnboardingStepId, profile: UserProfile): string | null {
+  if (step === 'age' && (profile.age < 14 || profile.age > 100)) {
+    return '年龄需要在 14 到 100 岁之间。';
+  }
+  if (step === 'height' && (profile.heightCm < 120 || profile.heightCm > 230)) {
+    return '身高需要在 120 到 230 cm 之间。';
+  }
+  if (step === 'weight' && (profile.weightKg < 30 || profile.weightKg > 300)) {
+    return '体重需要在 30 到 300 kg 之间。';
+  }
+  return null;
+}
+
+function validateProfile(profile: UserProfile): string | null {
+  return (
+    validateStep('age', profile) ??
+    validateStep('height', profile) ??
+    validateStep('weight', profile)
+  );
+}
+
 const styles = StyleSheet.create({
-  hero: {
-    minHeight: 226,
-    padding: 22,
+  screenContent: {
+    gap: 14,
+  },
+  header: {
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
     borderRadius: theme.radius.large,
     borderCurve: 'continuous',
     backgroundColor: theme.colors.ink,
-    overflow: 'hidden',
-    justifyContent: 'flex-end',
-    gap: 6,
     boxShadow: theme.shadows.large,
   },
-  heroIcon: {
-    position: 'absolute',
-    top: 20,
-    left: 22,
-    width: 48,
-    height: 48,
-    borderRadius: 16,
+  brandMark: {
+    width: 44,
+    height: 44,
+    borderRadius: 15,
+    borderCurve: 'continuous',
     backgroundColor: theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  heroBars: {
-    position: 'absolute',
-    right: 20,
-    top: 26,
-    height: 78,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 7,
+  brandCopy: {
+    flex: 1,
+    minWidth: 0,
   },
-  heroBar: {
-    width: 12,
-    borderRadius: 6,
-    backgroundColor: theme.colors.accent,
-  },
-  title: {
+  brandName: {
     color: '#FFFFFF',
-    fontSize: 34,
-    lineHeight: 40,
+    fontSize: 18,
     fontWeight: '900',
-    letterSpacing: -1,
+    letterSpacing: 0,
   },
-  subtitle: {
-    color: '#AEB9CD',
+  brandMeta: {
+    color: '#B9C4D7',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  stepBadge: {
+    minWidth: 54,
+    height: 36,
+    borderRadius: 12,
+    borderCurve: 'continuous',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  stepBadgeText: {
+    color: '#FFFFFF',
     fontSize: 13,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
   },
-  sectionCard: {
-    gap: 15,
+  progressTrack: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  progressSegment: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: theme.colors.borderSoft,
+  },
+  progressSegmentActive: {
+    backgroundColor: theme.colors.primary,
+  },
+  stepPanel: {
+    minHeight: 390,
+    gap: 12,
+    padding: 18,
+    borderRadius: theme.radius.large,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.surfaceRaised,
+    borderWidth: 1,
     borderColor: '#FFFFFF',
+    boxShadow: theme.shadows.medium,
   },
-  sectionHeading: {
+  stepTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  sectionIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 13,
+  stepIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
     borderCurve: 'continuous',
     backgroundColor: theme.colors.surfaceTint,
     borderWidth: 1,
@@ -252,29 +464,47 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sectionTitle: {
-    color: theme.colors.text,
-    fontSize: 19,
+  stepLabel: {
+    color: theme.colors.primary,
+    fontSize: 12,
     fontWeight: '900',
   },
-  row: {
-    flexDirection: 'row',
-    gap: 8,
+  title: {
+    color: theme.colors.text,
+    fontSize: 29,
+    lineHeight: 35,
+    fontWeight: '900',
+    letterSpacing: 0,
   },
-  flex: {
+  helper: {
+    color: theme.colors.textMuted,
+    fontSize: 14,
+    lineHeight: 21,
+    fontWeight: '700',
+  },
+  stepBody: {
     flex: 1,
+    justifyContent: 'center',
+    gap: 14,
+    paddingVertical: 16,
+  },
+  focusInput: {
+    height: 62,
+    fontSize: 24,
+    fontWeight: '900',
+    textAlign: 'center',
   },
   targetGrid: {
     flexDirection: 'row',
-    gap: 7,
+    gap: 8,
   },
   target: {
     flex: 1,
     minWidth: 0,
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 10,
-    borderRadius: 12,
+    gap: 5,
+    paddingVertical: 13,
+    borderRadius: 13,
     borderCurve: 'continuous',
     borderWidth: 1,
     borderColor: theme.colors.borderSoft,
@@ -292,13 +522,43 @@ const styles = StyleSheet.create({
   },
   targetValue: {
     color: theme.colors.text,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '900',
     fontVariant: ['tabular-nums'],
   },
-  disclaimer: {
-    color: theme.colors.textFaint,
-    fontSize: 11,
-    textAlign: 'center',
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  backButton: {
+    minHeight: 52,
+    minWidth: 116,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderCurve: 'continuous',
+    backgroundColor: theme.colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+    boxShadow: theme.shadows.small,
+  },
+  backButtonDisabled: {
+    opacity: 0.38,
+  },
+  backButtonText: {
+    color: theme.colors.primary,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  nextButton: {
+    flex: 1,
+  },
+  pressed: {
+    opacity: 0.78,
+    transform: [{ translateY: 1 }],
   },
 });
