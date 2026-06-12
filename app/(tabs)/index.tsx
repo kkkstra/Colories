@@ -362,6 +362,7 @@ export default function TodayScreen() {
 }
 
 function MealSuggestionCard({ state }: { state: MealSuggestionState }) {
+  const [expanded, setExpanded] = useState(false);
   const statusLabel = state.loading
     ? '正在生成'
     : state.source === 'ai'
@@ -374,86 +375,114 @@ function MealSuggestionCard({ state }: { state: MealSuggestionState }) {
   ].slice(0, 2);
 
   return (
-    <Card variant="base" style={styles.dinnerCard}>
-      <View style={styles.dinnerTop}>
-        <View style={styles.dinnerHeading}>
-          <View style={styles.dinnerIcon}>
-            <Ionicons name="sparkles-outline" size={17} color={theme.colors.primary} />
-          </View>
-          <View style={styles.dinnerTitleGroup}>
-            <Text style={styles.dinnerEyebrow}>
-              {state.scope === 'full_day' ? `${state.mealLabel}助手` : `${state.mealLabel}额度助手`}
-            </Text>
-            <Text style={styles.dinnerTitle}>{state.advice.title}</Text>
-          </View>
-        </View>
-        <View
-          style={[
-            styles.dinnerStatus,
-            statusTone === 'ai' && styles.dinnerStatusAi,
-            statusTone === 'fallback' && styles.dinnerStatusFallback,
-          ]}
-        >
-          {state.loading ? (
-            <ActivityIndicator color={theme.colors.primary} size="small" />
-          ) : null}
-          <Text
-            style={[
-              styles.dinnerStatusText,
-              statusTone === 'fallback' && styles.dinnerStatusTextFallback,
-            ]}
-          >
-            {statusLabel}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.remainingGrid}>
-        <RemainingPill label="热量" value={state.remaining.calories} unit="kcal" />
-        <RemainingPill label="蛋白" value={state.remaining.protein} unit="g" />
-        <RemainingPill label="碳水" value={state.remaining.carbs} unit="g" />
-        <RemainingPill label="脂肪" value={state.remaining.fat} unit="g" />
-      </View>
-
-      <Text style={styles.dinnerSummary}>{state.advice.summary}</Text>
-
-      <View style={styles.comboList}>
-        {state.advice.combo.map((food, index) => (
-          <MealFoodRow key={`${food.foodId ?? food.name}-${index}`} food={food} index={index} />
-        ))}
-      </View>
-
-      {state.advice.alternatives.length > 0 ? (
-        <View style={styles.alternativeWrap}>
-          <Text style={styles.alternativeLabel}>可替换</Text>
-          <View style={styles.alternativeList}>
-            {state.advice.alternatives.map((food, index) => (
-              <View key={`${food.foodId ?? food.name}-${index}`} style={styles.alternativePill}>
-                <Text style={styles.alternativeName} numberOfLines={1}>{food.name}</Text>
-                <Text style={styles.alternativeMeta}>{formatServing(food)}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      ) : null}
-
-      {warnings.map((warning) => (
-        <View key={warning} style={styles.dinnerWarning}>
-          <Ionicons name="alert-circle" size={14} color={theme.colors.warning} />
-          <Text style={styles.dinnerWarningText}>{warning}</Text>
-        </View>
-      ))}
-
+    <Card variant="base" style={[styles.dinnerCard, !expanded && styles.dinnerCardCollapsed]}>
       <Pressable
         accessibilityRole="button"
-        onPress={() => router.push('/(tabs)/record')}
-        style={({ pressed }) => [styles.recordDinnerButton, pressed && styles.pressed]}
+        accessibilityState={{ expanded }}
+        onPress={() => setExpanded((current) => !current)}
+        style={({ pressed }) => [styles.suggestionToggle, pressed && styles.pressed]}
       >
-        <Ionicons name="add-circle" size={19} color="#FFFFFF" />
-        <Text style={styles.recordDinnerText}>
-          {state.scope === 'full_day' ? '记录下一餐' : `记录${state.mealLabel}`}
+        <View style={styles.dinnerTop}>
+          <View style={styles.dinnerHeading}>
+            <View style={styles.dinnerIcon}>
+              <Ionicons name="sparkles-outline" size={17} color={theme.colors.primary} />
+            </View>
+            <View style={styles.dinnerTitleGroup}>
+              <Text style={styles.dinnerEyebrow}>
+                {state.scope === 'full_day' ? `${state.mealLabel}助手` : `${state.mealLabel}额度助手`}
+              </Text>
+              <Text style={styles.dinnerTitle}>{state.advice.title}</Text>
+            </View>
+          </View>
+          <View style={styles.dinnerTopActions}>
+            <View
+              style={[
+                styles.dinnerStatus,
+                statusTone === 'ai' && styles.dinnerStatusAi,
+                statusTone === 'fallback' && styles.dinnerStatusFallback,
+              ]}
+            >
+              {state.loading ? (
+                <ActivityIndicator color={theme.colors.primary} size="small" />
+              ) : null}
+              <Text
+                style={[
+                  styles.dinnerStatusText,
+                  statusTone === 'fallback' && styles.dinnerStatusTextFallback,
+                ]}
+              >
+                {statusLabel}
+              </Text>
+            </View>
+            <View style={styles.dinnerExpandIcon}>
+              <Ionicons
+                name={expanded ? 'chevron-up' : 'chevron-down'}
+                size={17}
+                color={theme.colors.textMuted}
+              />
+            </View>
+          </View>
+        </View>
+
+        <Text
+          style={[
+            styles.dinnerSummary,
+            !expanded && styles.dinnerSummaryCollapsed,
+          ]}
+          numberOfLines={expanded ? undefined : 2}
+        >
+          {state.advice.summary}
         </Text>
       </Pressable>
+
+      {expanded ? (
+        <>
+          <View style={styles.remainingGrid}>
+            <RemainingPill label="热量" value={state.remaining.calories} unit="kcal" />
+            <RemainingPill label="蛋白" value={state.remaining.protein} unit="g" />
+            <RemainingPill label="碳水" value={state.remaining.carbs} unit="g" />
+            <RemainingPill label="脂肪" value={state.remaining.fat} unit="g" />
+          </View>
+
+          <View style={styles.comboList}>
+            {state.advice.combo.map((food, index) => (
+              <MealFoodRow key={`${food.foodId ?? food.name}-${index}`} food={food} index={index} />
+            ))}
+          </View>
+
+          {state.advice.alternatives.length > 0 ? (
+            <View style={styles.alternativeWrap}>
+              <Text style={styles.alternativeLabel}>可替换</Text>
+              <View style={styles.alternativeList}>
+                {state.advice.alternatives.map((food, index) => (
+                  <View key={`${food.foodId ?? food.name}-${index}`} style={styles.alternativePill}>
+                    <Text style={styles.alternativeName} numberOfLines={1}>{food.name}</Text>
+                    <Text style={styles.alternativeMeta}>{formatServing(food)}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          {warnings.map((warning) => (
+            <View key={warning} style={styles.dinnerWarning}>
+              <Ionicons name="alert-circle" size={14} color={theme.colors.warning} />
+              <Text style={styles.dinnerWarningText}>{warning}</Text>
+            </View>
+          ))}
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/(tabs)/record')}
+            style={({ pressed }) => [styles.recordDinnerButton, pressed && styles.pressed]}
+          >
+            <Ionicons name="add-circle" size={19} color="#FFFFFF" />
+            <Text style={styles.recordDinnerText}>
+              {state.scope === 'full_day' ? '记录下一餐' : `记录${state.mealLabel}`}
+            </Text>
+          </Pressable>
+        </>
+      ) : null}
     </Card>
   );
 }
@@ -808,6 +837,14 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
     overflow: 'hidden',
   },
+  dinnerCardCollapsed: {
+    gap: 0,
+  },
+  suggestionToggle: {
+    gap: 10,
+    borderRadius: 14,
+    borderCurve: 'continuous',
+  },
   dinnerTop: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -834,6 +871,19 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     gap: 2,
+  },
+  dinnerTopActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  dinnerExpandIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: theme.colors.surfaceInset,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   dinnerEyebrow: {
     color: theme.colors.primary,
@@ -927,6 +977,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     fontWeight: '700',
+  },
+  dinnerSummaryCollapsed: {
+    color: theme.colors.text,
   },
   comboList: {
     gap: 8,
